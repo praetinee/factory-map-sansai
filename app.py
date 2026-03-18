@@ -5,9 +5,24 @@ from streamlit_folium import st_folium
 import requests
 
 # ==========================================
-# 1. การตั้งค่าหน้าเว็บ Streamlit
+# 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Sarabun
 # ==========================================
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
+
+# แทรก CSS เพื่อโหลดและตั้งค่าฟอนต์ Sarabun ให้กับทั้งแอป
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Sarabun', sans-serif !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Sarabun', sans-serif !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("📍 แผนที่ความเสี่ยงโรงงาน อ.สันทราย จ.เชียงใหม่")
 st.markdown("แสดงพิกัดโรงงานตามระดับความเสี่ยง พร้อมเลเยอร์ขอบเขต ปั๊มน้ำมัน และโรงพยาบาล")
@@ -131,10 +146,17 @@ hospitals = [
 ]
 for h in hospitals:
     icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
+    
+    # เพิ่มฟอนต์ Sarabun ให้ Popup
+    popup_html = f"""
+        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+        <div style="font-family: 'Sarabun', sans-serif;"><b>🏥 {h['name']}</b></div>
+    """
+    
     folium.Marker(
         [h['lat'], h['lon']], 
         icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)),
-        popup=folium.Popup(f"<b>🏥 {h['name']}</b>", max_width=200)
+        popup=folium.Popup(popup_html, max_width=200)
     ).add_to(fg_hospital)
 
 # 4.5 โหลดและเพิ่มปั๊มน้ำมัน
@@ -145,13 +167,21 @@ for el in gas_stations:
     if lat and lon:
         name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
         brand = el.get('tags', {}).get('brand', '')
-        popup_text = f"<b>⛽ {name}</b><br><small>{brand}</small>"
         
         icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>⛽</div>"
+        
+        # เพิ่มฟอนต์ Sarabun ให้ Popup
+        popup_html = f"""
+            <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+            <div style="font-family: 'Sarabun', sans-serif;">
+                <b>⛽ {name}</b><br><small>{brand}</small>
+            </div>
+        """
+        
         folium.Marker(
             [lat, lon],
             icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)),
-            popup=folium.Popup(popup_text, max_width=250)
+            popup=folium.Popup(popup_html, max_width=250)
         ).add_to(fg_gas)
 
 # 4.6 โหลดและเพิ่มข้อมูลโรงงาน (จาก CSV/Google Sheets)
@@ -184,9 +214,11 @@ if not df_factories.empty:
                     elif '🟢' in risk_level or 'เสี่ยงต่ำ' in risk_level:
                         marker_color, fill_color = '#27ae60', '#2ecc71'
 
+                    # นำเข้าฟอนต์ Sarabun และกำหนดให้ใช้งานกับหน้าต่าง Popup
                     popup_html = f"""
-                        <div style="min-width: 250px; font-family: sans-serif;">
-                            <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0;">🏭 {full_name}</h4>
+                        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+                        <div style="min-width: 250px; font-family: 'Sarabun', sans-serif;">
+                            <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0; font-family: 'Sarabun', sans-serif;">🏭 {full_name}</h4>
                             <div style="margin-bottom: 8px;"><strong>⚠️ ระดับความเสี่ยง:</strong><br>{risk_level}</div>
                             <div style="margin-bottom: 8px;"><strong>📍 สถานที่ตั้ง:</strong><br>{location}</div>
                             <div style="margin-bottom: 8px;"><strong>⚙️ การประกอบกิจการ:</strong><br>{activity}</div>
