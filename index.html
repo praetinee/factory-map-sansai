@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แผนที่ความเสี่ยงโรงงาน อ.สันทราย: Google Maps + Leaflet</title>
+    
+    <!-- โหลด Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- โหลด PapaParse สำหรับอ่านไฟล์ CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { width: 100vw; height: 100vh; }
+        .info-box {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            max-width: 300px;
+            border-left: 5px solid #2c3e50;
+        }
+        /* สไตล์สำหรับไอคอนอีโมจิ */
+        .emoji-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            line-height: 1;
+            filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.3));
+        }
+        .upload-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px dashed #ccc;
+        }
+        .legend {
+            margin-top: 10px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+            border: 1px solid #7f8c8d;
+        }
+        /* ปรับแต่ง Popup ให้สวยงามและอ่านง่าย */
+        .custom-popup .leaflet-popup-content {
+            margin: 15px;
+            line-height: 1.5;
+        }
+        .custom-popup h4 {
+            margin: 0 0 10px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #eee;
+            font-size: 15px;
+        }
+        .popup-section {
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        .popup-section strong {
+            color: #34495e;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    <div class="info-box">
+        <h3 style="margin: 0 0 10px 0; font-size: 16px;">📍 แผนที่โรงงาน อ.สันทราย</h3>
+        <small id="status" style="color: #e67e22;">กำลังโหลดข้อมูลแผนที่...</small>
+        
+        <!-- คำอธิบายสัญลักษณ์ความเสี่ยง -->
+        <div class="legend">
+            <b>สัญลักษณ์ความเสี่ยง:</b><br>
+            <div><span class="legend-color" style="background: #e74c3c; border-color: #c0392b;"></span> 🔴 เสี่ยงสูง (High Risk)</div>
+            <div><span class="legend-color" style="background: #f1c40f; border-color: #f39c12;"></span> 🟡 เสี่ยงปานกลาง (Medium)</div>
+            <div><span class="legend-color" style="background: #2ecc71; border-color: #27ae60;"></span> 🟢 เสี่ยงต่ำ (Low Risk)</div>
+        </div>
+
+        <!-- ส่วนอัปโหลดไฟล์ CSV -->
+        <div class="upload-section">
+            <b>อัปโหลดพิกัดโรงงาน (CSV):</b><br>
+            <input type="file" id="csvFileInput" accept=".csv" style="width: 100%; margin-top: 8px; font-size: 12px; cursor: pointer;">
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // 1. เริ่มต้นแผนที่
+        const map = L.map('map').setView([18.9135, 99.0279], 11);
+
+        // 2. ตั้งค่าเลเยอร์ Google Maps
+        const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '&copy; Google Maps'
+        });
+
+        const googleHybrid = L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '&copy; Google Maps'
+        });
+
+        googleStreets.addTo(map);
+
+        // ฟังก์ชันสร้างไอคอน Emoji
+        function createEmojiIcon(emoji) {
+            return L.divIcon({
+                html: `<div class="emoji-icon">${emoji}</div>`,
+                className: 'custom-div-icon',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+        }
+
+        // 3. เลเยอร์เส้นขอบเขต
+        const boundaryLayer = L.layerGroup().addTo(map);
+        const boundaryUrl = 'https://nominatim.openstreetmap.org/search?q=อำเภอสันทราย,เชียงใหม่&format=geojson&polygon_geojson=1';
+
+        fetch(boundaryUrl)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.features && data.features.length > 0) {
+                    let mainFeature = data.features.reduce((prev, current) => {
+                        const getCoordCount = (feat) => {
+                            const g = feat.geometry;
+                            if (g.type === 'Polygon') return g.coordinates[0].length;
+                            if (g.type === 'MultiPolygon') return g.coordinates.reduce((acc, poly) => acc + poly[0].length, 0);
+                            return 0;
+                        };
+                        return (getCoordCount(current) > getCoordCount(prev)) ? current : prev;
+                    });
+
+                    const geom = mainFeature.geometry;
+                    if (geom.type === 'Polygon') {
+                        geom.coordinates = [geom.coordinates[0]];
+                    } else if (geom.type === 'MultiPolygon') {
+                        let largestPart = geom.coordinates.reduce((prev, curr) => (curr[0].length > prev[0].length) ? curr : prev);
+                        mainFeature.geometry.type = 'Polygon';
+                        mainFeature.geometry.coordinates = [largestPart[0]];
+                    }
+
+                    const cleanBoundary = L.geoJSON(mainFeature, {
+                        style: { color: 'red', weight: 4, fillColor: 'red', fillOpacity: 0.03 }
+                    });
+                    boundaryLayer.addLayer(cleanBoundary);
+                    map.fitBounds(cleanBoundary.getBounds());
+                }
+            });
+
+        // 4. เลเยอร์โรงพยาบาล (ใช้อีโมจิ 🏥)
+        const hospitalLayer = L.layerGroup().addTo(map);
+        const hospitalIcon = createEmojiIcon('🏥');
+        const hospitals = [
+            { name: "รพ. สันทราย", lat: 18.921246310072668, lon: 98.99420383884873 },
+            { name: "รพ. นครพิงค์", lat: 18.852547472072217, lon: 98.96838998650638 }
+        ];
+        hospitals.forEach(h => {
+            L.marker([h.lat, h.lon], { icon: hospitalIcon })
+            .bindPopup(`<b>🏥 ${h.name}</b>`)
+            .addTo(hospitalLayer);
+        });
+
+        // 5. ดึงข้อมูลปั๊มน้ำมัน (ใช้อีโมจิ ⛽)
+        const gasStationLayer = L.layerGroup().addTo(map);
+        const gasIcon = createEmojiIcon('⛽');
+        const statusEl = document.getElementById('status');
+        
+        const overpassQuery = `
+            [out:json][timeout:30];
+            rel["name"~"สันทราย"]["admin_level"="6"];
+            map_to_area -> .searchArea;
+            (
+              node["amenity"="fuel"](area.searchArea);
+              way["amenity"="fuel"](area.searchArea);
+            );
+            out center;
+        `;
+        const overpassUrl = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(overpassQuery);
+
+        fetch(overpassUrl)
+            .then(res => res.json())
+            .then(data => {
+                let count = 0;
+                if (data && data.elements) {
+                    data.elements.forEach(el => {
+                        const lat = el.lat || (el.center && el.center.lat);
+                        const lon = el.lon || (el.center && el.center.lon);
+                        if (lat && lon) {
+                            count++;
+                            const name = el.tags.name || "ปั๊มน้ำมัน";
+                            const brand = el.tags.brand || "";
+                            L.marker([lat, lon], { icon: gasIcon })
+                            .bindPopup(`<b>⛽ ${name}</b><br>${brand}`)
+                            .addTo(gasStationLayer);
+                        }
+                    });
+                }
+                statusEl.innerHTML = `✅ พร้อมใช้งาน (พบปั๊ม ${count} แห่ง, รพ. 2 แห่ง)`;
+                statusEl.style.color = '#27ae60';
+            });
+
+        // 6. === เลเยอร์โรงงานจากไฟล์ CSV ===
+        const factoryLayer = L.layerGroup().addTo(map);
+
+        document.getElementById('csvFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusEl.innerHTML = "กำลังอ่านข้อมูลโรงงาน...";
+            statusEl.style.color = '#e67e22';
+            
+            // ล้างข้อมูลเดิมก่อน (เผื่ออัปโหลดไฟล์ใหม่ทับ)
+            factoryLayer.clearLayers();
+
+            Papa.parse(file, {
+                complete: function(results) {
+                    const data = results.data;
+                    let count = 0;
+                    
+                    for (let i = 1; i < data.length; i++) {
+                        const row = data[i];
+                        
+                        // ตรวจสอบว่ามีข้อมูลถึงคอลัมน์ H (Index ที่ 7)
+                        if (row.length >= 8) { 
+                            const coordsStr = row[7]; 
+                            
+                            if (coordsStr && coordsStr.includes(',')) {
+                                // ลบเครื่องหมายคำพูด (") ออกก่อนแปลงเป็นตัวเลข
+                                const parts = coordsStr.replace(/"/g, '').split(',');
+                                const lat = parseFloat(parts[0].trim());
+                                const lon = parseFloat(parts[1].trim());
+
+                                if (!isNaN(lat) && !isNaN(lon)) {
+                                    // จัดเตรียมข้อมูลและแทนที่ ขึ้นบรรทัดใหม่ ด้วย <br>
+                                    const rawName = row[1] || 'โรงงาน (ไม่มีชื่อ)';
+                                    const fullName = rawName.split('\n')[0].replace(/"/g, ''); // เอาเฉพาะบรรทัดแรกมาเป็นชื่อหลัก
+                                    const location = (row[2] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
+                                    const activity = (row[4] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
+                                    const riskDetails = (row[5] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
+                                    const riskLevel = (row[6] || 'ไม่ระบุ').replace(/"/g, '');
+
+                                    // กำหนดสีหมุดตามระดับความเสี่ยง
+                                    let markerColor = '#95a5a6'; // สีเทา (ค่าเริ่มต้น)
+                                    let fillColor = '#bdc3c7';
+                                    
+                                    if (riskLevel.includes('🔴') || riskLevel.includes('เสี่ยงสูง')) {
+                                        markerColor = '#c0392b';
+                                        fillColor = '#e74c3c';
+                                    } else if (riskLevel.includes('🟡') || riskLevel.includes('ปานกลาง')) {
+                                        markerColor = '#d35400';
+                                        fillColor = '#f1c40f';
+                                    } else if (riskLevel.includes('🟢') || riskLevel.includes('เสี่ยงต่ำ')) {
+                                        markerColor = '#27ae60';
+                                        fillColor = '#2ecc71';
+                                    }
+
+                                    // โครงสร้าง HTML สำหรับหน้าต่างรายละเอียด (Popup)
+                                    const popupHtml = `
+                                        <div class="custom-popup" style="min-width: 250px;">
+                                            <h4 style="color: ${markerColor};">🏭 ${fullName}</h4>
+                                            
+                                            <div class="popup-section">
+                                                <strong>⚠️ ระดับความเสี่ยง:</strong><br>
+                                                ${riskLevel}
+                                            </div>
+                                            
+                                            <div class="popup-section">
+                                                <strong>📍 สถานที่ตั้ง:</strong><br>
+                                                ${location}
+                                            </div>
+                                            
+                                            <div class="popup-section">
+                                                <strong>⚙️ การประกอบกิจการ:</strong><br>
+                                                ${activity}
+                                            </div>
+                                            
+                                            <div class="popup-section">
+                                                <strong>🔥 ความเสี่ยงที่อาจเกิดขึ้น:</strong><br>
+                                                ${riskDetails}
+                                            </div>
+                                        </div>
+                                    `;
+
+                                    // สร้างหมุดวงกลมที่มีสีตามความเสี่ยง
+                                    L.circleMarker([lat, lon], {
+                                        radius: 8,
+                                        color: '#ffffff', // ขอบสีขาวให้ดูเด่น
+                                        weight: 2,
+                                        fillColor: fillColor,
+                                        fillOpacity: 0.95
+                                    })
+                                    .bindPopup(popupHtml, { maxWidth: 300 }) // ตั้งค่าความกว้างสูงสุดของ Popup
+                                    .addTo(factoryLayer);
+
+                                    count++;
+                                }
+                            }
+                        }
+                    }
+                    statusEl.innerHTML = `✅ ปักหมุดโรงงานสำเร็จ ${count} แห่ง!`;
+                    statusEl.style.color = '#27ae60';
+                    
+                    // สั่งให้แผนที่แสดงเลเยอร์โรงงานหากถูกปิดไว้
+                    if (!map.hasLayer(factoryLayer)) {
+                        map.addLayer(factoryLayer);
+                    }
+                },
+                error: function(err) {
+                    console.error(err);
+                    statusEl.innerHTML = "❌ เกิดข้อผิดพลาดในการอ่านไฟล์";
+                    statusEl.style.color = '#c0392b';
+                }
+            });
+        });
+
+        // 7. ส่วนควบคุมเลเยอร์
+        const baseMaps = {
+            "Google Maps (ถนน)": googleStreets,
+            "Google Hybrid (ดาวเทียม)": googleHybrid
+        };
+
+        const overlayMaps = {
+            "🟥 เส้นขอบเขต อ.สันทราย": boundaryLayer,
+            "🏥 โรงพยาบาล": hospitalLayer,
+            "⛽ ปั๊มน้ำมัน": gasStationLayer,
+            "📍 โรงงาน (แยกตามสี)": factoryLayer
+        };
+
+        L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+
+    </script>
+</body>
+</html>
