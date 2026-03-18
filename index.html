@@ -158,30 +158,43 @@
         // โมดูล 2: ฟังก์ชันดึงขอบเขตอำเภอ (Boundary)
         // ==========================================
         async function loadBoundary() {
-            const url = 'https://nominatim.openstreetmap.org/search?q=อำเภอสันทราย,เชียงใหม่&format=geojson&polygon_geojson=1';
+            // ปรับคำค้นหาให้ชัดเจนขึ้นเพื่อป้องกันการไม่พบข้อมูล
+            const url = 'https://nominatim.openstreetmap.org/search?q=อำเภอสันทราย+จังหวัดเชียงใหม่&format=geojson&polygon_geojson=1&limit=1';
             try {
                 const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data && data.features && data.features.length > 0) {
+                    const getCoordCount = (feat) => {
+                        const g = feat.geometry;
+                        if (!g) return 0;
+                        if (g.type === 'Polygon') return g.coordinates[0].length;
+                        if (g.type === 'MultiPolygon') return g.coordinates.reduce((acc, poly) => acc + poly[0].length, 0);
+                        return 0;
+                    };
+                    
                     let mainFeature = data.features.reduce((prev, current) => {
-                        const getCoordCount = (feat) => {
-                            const g = feat.geometry;
-                            if (!g) return 0;
-                            if (g.type === 'Polygon') return g.coordinates[0].length;
-                            if (g.type === 'MultiPolygon') return g.coordinates.reduce((acc, poly) => acc + poly[0].length, 0);
-                            return 0;
-                        };
                         return (getCoordCount(current) > getCoordCount(prev)) ? current : prev;
-                    });
+                    }, data.features[0]);
 
                     const geom = mainFeature.geometry;
-                    if (geom.type === 'Polygon') {
-                        geom.coordinates = [geom.coordinates[0]];
-                    } else if (geom.type === 'MultiPolygon') {
-                        let largestPart = geom.coordinates.reduce((prev, curr) => (curr[0].length > prev[0].length) ? curr : prev);
-                        mainFeature.geometry.type = 'Polygon';
-                        mainFeature.geometry.coordinates = [largestPart[0]];
+                    try {
+                        if (geom.type === 'Polygon') {
+                            geom.coordinates = [geom.coordinates[0]];
+                        } else if (geom.type === 'MultiPolygon') {
+                            let largestPart = geom.coordinates[0];
+                            let maxPoints = 0;
+                            geom.coordinates.forEach(part => {
+                                if (part[0].length > maxPoints) {
+                                    maxPoints = part[0].length;
+                                    largestPart = part;
+                                }
+                            });
+                            mainFeature.geometry.type = 'Polygon';
+                            mainFeature.geometry.coordinates = [largestPart[0]];
+                        }
+                    } catch (e) {
+                        console.warn("ข้ามการตัดไข่แดง เนื่องจากข้อมูลซับซ้อนเกินไป", e);
                     }
 
                     const cleanBoundary = L.geoJSON(mainFeature, {
@@ -191,6 +204,8 @@
                     boundaryLayer.clearLayers();
                     boundaryLayer.addLayer(cleanBoundary);
                     map.fitBounds(cleanBoundary.getBounds());
+                } else {
+                    console.warn("ไม่พบข้อมูลเส้นขอบเขตจากเซิร์ฟเวอร์ OSM");
                 }
             } catch (error) {
                 console.error("เกิดข้อผิดพลาดในการโหลดขอบเขต:", error);
@@ -223,10 +238,11 @@
             const statusEl = document.getElementById('status');
             const gasIcon = createEmojiIcon('⛽');
             
-            // ใช้ query ที่เสถียรที่สุดในการค้นหาพื้นที่
+            // ปรับ Query ใหม่ให้ค้นหาด้วย Relation โดยตรง ซึ่งแม่นยำและป้องกัน Error ได้ดีกว่า
             const query = `
                 [out:json][timeout:30];
-                area["name"="อำเภอสันทราย"]["admin_level"="6"]->.searchArea;
+                rel["name"~"สันทราย"]["admin_level"="6"];
+                map_to_area -> .searchArea;
                 (
                   node["amenity"="fuel"](area.searchArea);
                   way["amenity"="fuel"](area.searchArea);
@@ -261,7 +277,7 @@
             } catch (error) {
                 console.error("เกิดข้อผิดพลาดในการโหลดปั๊มน้ำมัน:", error);
                 // แสดงสถานะว่าอย่างน้อยโรงพยาบาลก็โหลดเสร็จ
-                statusEl.innerHTML = `⚠️ โหลดปั๊มน้ำมันไม่สำเร็จ (รพ. 2 แห่ง)`;
+                statusEl.innerHTML = `⚠️ โหลดปั๊มน้ำมันไม่สำเร็จ (รพ. 2 แห่งทำงานปกติ)`;
                 statusEl.style.color = '#e67e22';
             }
         }
