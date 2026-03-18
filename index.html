@@ -5,407 +5,364 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แผนที่ความเสี่ยงโรงงาน อ.สันทราย: Google Maps + Leaflet</title>
     
-    <!-- โหลด Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    
-    <!-- โหลด PapaParse สำหรับอ่านไฟล์ CSV/Google Sheets -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #map { width: 100vw; height: 100vh; }
         .info-box {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            z-index: 1000;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            max-width: 300px;
-            border-left: 5px solid #2c3e50;
+            position: absolute; bottom: 20px; left: 20px; background: white; padding: 15px;
+            border-radius: 8px; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            max-width: 320px; border-left: 5px solid #2c3e50;
         }
-        /* สไตล์สำหรับไอคอนอีโมจิ */
         .emoji-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            line-height: 1;
-            filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.3));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; line-height: 1; filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.3));
         }
-        .upload-section {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px dashed #ccc;
-        }
-        .legend {
-            margin-top: 10px;
-            font-size: 12px;
-            line-height: 1.6;
-        }
-        .legend-color {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 5px;
-            border: 1px solid #7f8c8d;
-        }
-        /* ปรับแต่ง Popup ให้สวยงามและอ่านง่าย */
-        .custom-popup .leaflet-popup-content {
-            margin: 15px;
-            line-height: 1.5;
-        }
-        .custom-popup h4 {
-            margin: 0 0 10px 0;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #eee;
-            font-size: 15px;
-        }
-        .popup-section {
-            margin-bottom: 10px;
-            font-size: 13px;
-        }
-        .popup-section strong {
-            color: #34495e;
-        }
-        /* ปุ่มดึงข้อมูล */
+        .status-container { font-size: 13px; line-height: 1.6; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+        .status-item { display: flex; align-items: center; margin-bottom: 4px; }
+        .status-icon { margin-right: 8px; font-size: 16px; }
+        .legend { margin-top: 15px; font-size: 13px; line-height: 1.8; border-top: 1px dashed #ccc; padding-top: 10px; }
+        .legend-color { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; border: 1px solid #7f8c8d; vertical-align: middle; }
+        .custom-popup .leaflet-popup-content { margin: 15px; line-height: 1.6; }
+        .custom-popup h4 { margin: 0 0 10px 0; padding-bottom: 8px; border-bottom: 2px solid #eee; font-size: 16px; }
+        .popup-section { margin-bottom: 12px; font-size: 14px; }
+        .popup-section strong { color: #34495e; }
         .btn-sync {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 8px 10px;
-            width: 100%;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-            margin-top: 8px;
-            transition: background 0.3s;
+            background-color: #3498db; color: white; border: none; padding: 10px; width: 100%;
+            border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; margin-top: 15px; transition: background 0.3s;
         }
-        .btn-sync:hover {
-            background-color: #2980b9;
-        }
+        .btn-sync:hover { background-color: #2980b9; }
+        .loading-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #3498db; animation: spin 1s ease-in-out infinite; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
+    
     <div class="info-box">
-        <h3 style="margin: 0 0 10px 0; font-size: 16px;">📍 แผนที่โรงงาน อ.สันทราย</h3>
+        <h3 style="margin: 0 0 15px 0; font-size: 18px; color: #2c3e50;">📍 แผนที่โรงงาน อ.สันทราย</h3>
         
-        <div style="font-size: 12px; line-height: 1.5; margin-bottom: 10px;">
-            <div id="status" style="color: #e67e22;">กำลังโหลดข้อมูลแผนที่...</div>
-            <div id="factory-status" style="color: #3498db;">กำลังโหลดข้อมูลโรงงาน...</div>
+        <div class="status-container">
+            <div class="status-item" id="status-boundary"><span class="loading-spinner"></span> กำลังโหลดขอบเขต...</div>
+            <div class="status-item" id="status-gas"><span class="loading-spinner"></span> กำลังค้นหาปั๊มน้ำมัน...</div>
+            <div class="status-item" id="status-factory"><span class="loading-spinner"></span> กำลังอ่านข้อมูลโรงงาน...</div>
         </div>
         
-        <!-- คำอธิบายสัญลักษณ์ความเสี่ยง -->
         <div class="legend">
-            <b>สัญลักษณ์ความเสี่ยงโรงงาน:</b><br>
+            <strong style="display: block; margin-bottom: 5px;">สัญลักษณ์ความเสี่ยงโรงงาน:</strong>
             <div><span class="legend-color" style="background: #e74c3c; border-color: #c0392b;"></span> 🔴 เสี่ยงสูง (High Risk)</div>
             <div><span class="legend-color" style="background: #f1c40f; border-color: #f39c12;"></span> 🟡 เสี่ยงปานกลาง (Medium)</div>
             <div><span class="legend-color" style="background: #2ecc71; border-color: #27ae60;"></span> 🟢 เสี่ยงต่ำ (Low Risk)</div>
         </div>
 
-        <!-- ส่วนดึงข้อมูลจาก Google Sheets -->
-        <div class="upload-section">
-            <b>ดึงข้อมูลจาก Google Sheets:</b><br>
-            <button id="btnLoadSheet" class="btn-sync">🔄 โหลดข้อมูลโรงงานล่าสุด</button>
-            <small style="color: gray; display: block; margin-top: 5px;">* แผ่นงานต้องเปิดสิทธิ์การแชร์เป็นสาธารณะ</small>
-        </div>
+        <button id="btnLoadSheet" class="btn-sync">🔄 โหลดข้อมูลโรงงานล่าสุด</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
     <script>
-        // ==========================================
-        // โมดูล 1: การตั้งค่าพื้นฐานแผนที่ (Map Setup)
-        // ==========================================
-        const map = L.map('map').setView([18.9135, 99.0279], 11);
-
-        const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-            maxZoom: 20,
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-            attribution: '&copy; Google Maps'
-        });
-
-        const googleHybrid = L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
-            maxZoom: 20,
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-            attribution: '&copy; Google Maps'
-        });
-
-        googleStreets.addTo(map);
-
-        // ตัวแปรเก็บเลเยอร์ต่างๆ
-        const boundaryLayer = L.layerGroup().addTo(map);
-        const hospitalLayer = L.layerGroup().addTo(map);
-        const gasStationLayer = L.layerGroup().addTo(map);
-        const factoryLayer = L.layerGroup().addTo(map);
-
-        // ฟังก์ชันสร้าง Emoji Icon
-        function createEmojiIcon(emoji) {
-            return L.divIcon({
-                html: `<div class="emoji-icon">${emoji}</div>`,
-                className: 'custom-div-icon',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-            });
-        }
-
-
-        // ==========================================
-        // โมดูล 2: ฟังก์ชันดึงขอบเขตอำเภอ (Boundary)
-        // ==========================================
-        async function loadBoundary() {
-            // ใช้คำค้นหาที่เสถียรที่สุด
-            const url = 'https://nominatim.openstreetmap.org/search?q=อำเภอสันทราย,เชียงใหม่&format=geojson&polygon_geojson=1';
+        /**
+         * ==========================================
+         * โมดูล: Core & Map Initialization
+         * หน้าที่: สร้างแผนที่, เลเยอร์พื้นฐาน, และเครื่องมือทั่วไป
+         * (ในโปรเจ็กต์จริงแยกเป็นไฟล์ js/map-core.js)
+         * ==========================================
+         */
+        const AppMap = (function() {
+            const map = L.map('map').setView([18.9135, 99.0279], 11);
             
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                if (data && data.features) {
-                    // ป้องกัน Error: กรองเอาเฉพาะข้อมูลที่เป็นรูปทรง (Polygon) เท่านั้น (ตัดข้อมูลแบบ Point ทิ้ง)
-                    const polygonFeatures = data.features.filter(f => f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
-                    
-                    if (polygonFeatures.length > 0) {
-                        // หาชิ้นส่วนที่มีขนาดใหญ่ที่สุด
-                        let mainFeature = polygonFeatures.reduce((prev, curr) => {
-                            const getPoints = (geom) => {
-                                if (geom.type === 'Polygon') return geom.coordinates[0].length;
-                                if (geom.type === 'MultiPolygon') return geom.coordinates.reduce((sum, poly) => sum + poly[0].length, 0);
-                                return 0;
-                            };
-                            return getPoints(curr.geometry) > getPoints(prev.geometry) ? curr : prev;
-                        });
+            const baseLayers = {
+                "Google Maps (ถนน)": L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] }),
+                "Google Hybrid (ดาวเทียม)": L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'] })
+            };
+            baseLayers["Google Maps (ถนน)"].addTo(map);
 
-                        const geom = mainFeature.geometry;
-                        
-                        // ลบพื้นที่ไข่แดง (อุดรูรั่ว)
-                        if (geom.type === 'Polygon') {
-                            geom.coordinates = [geom.coordinates[0]];
-                        } else if (geom.type === 'MultiPolygon') {
-                            let largestPart = geom.coordinates.reduce((prev, curr) => (curr[0].length > prev[0].length) ? curr : prev);
-                            mainFeature.geometry.type = 'Polygon';
-                            mainFeature.geometry.coordinates = [largestPart[0]];
-                        }
+            const layers = {
+                boundary: L.layerGroup().addTo(map),
+                hospital: L.layerGroup().addTo(map),
+                gas: L.layerGroup().addTo(map),
+                factory: L.layerGroup().addTo(map)
+            };
 
-                        // วาดเส้นขอบเขต
-                        const cleanBoundary = L.geoJSON(mainFeature, {
-                            style: { color: 'red', weight: 4, fillColor: 'red', fillOpacity: 0.03 }
-                        });
-                        
-                        boundaryLayer.clearLayers();
-                        boundaryLayer.addLayer(cleanBoundary);
-                        map.fitBounds(cleanBoundary.getBounds());
+            const layerControl = L.control.layers(baseLayers, {
+                "🟥 ขอบเขต อ.สันทราย": layers.boundary,
+                "🏥 โรงพยาบาล": layers.hospital,
+                "⛽ ปั๊มน้ำมัน": layers.gas,
+                "📍 โรงงาน (ความเสี่ยง)": layers.factory
+            }, { collapsed: false }).addTo(map);
+
+            return {
+                map: map,
+                layers: layers,
+                createEmojiIcon: function(emoji) {
+                    return L.divIcon({
+                        html: `<div class="emoji-icon">${emoji}</div>`,
+                        className: 'custom-div-icon',
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    });
+                },
+                updateStatus: function(elementId, message, isSuccess = true, isLoading = false) {
+                    const el = document.getElementById(elementId);
+                    if (el) {
+                        let icon = isSuccess ? '✅ ' : '❌ ';
+                        if (isLoading) icon = '<span class="loading-spinner"></span> ';
+                        el.innerHTML = `${icon} ${message}`;
+                        el.style.color = isLoading ? '#2c3e50' : (isSuccess ? '#27ae60' : '#c0392b');
                     }
                 }
-            } catch (error) {
-                console.error("เกิดข้อผิดพลาดในการโหลดขอบเขต:", error);
-            }
-        }
+            };
+        })();
 
 
-        // ==========================================
-        // โมดูล 3: ฟังก์ชันดึงจุดพิกัดโรงพยาบาล (Hospitals)
-        // ==========================================
-        function loadHospitals() {
-            hospitalLayer.clearLayers();
-            const hospitalIcon = createEmojiIcon('🏥');
-            const hospitals = [
-                { name: "รพ. สันทราย", lat: 18.921246310072668, lon: 98.99420383884873 },
-                { name: "รพ. นครพิงค์", lat: 18.852547472072217, lon: 98.96838998650638 }
-            ];
-            hospitals.forEach(h => {
-                L.marker([h.lat, h.lon], { icon: hospitalIcon })
-                .bindPopup(`<b>🏥 ${h.name}</b>`)
-                .addTo(hospitalLayer);
-            });
-        }
-
-
-        // ==========================================
-        // โมดูล 4: ฟังก์ชันดึงปั๊มน้ำมัน (Gas Stations)
-        // ==========================================
-        async function loadGasStations() {
-            const statusEl = document.getElementById('status');
-            const gasIcon = createEmojiIcon('⛽');
-            
-            // กลับไปใช้ Query ที่เสถียรและทำงานได้ชัวร์
-            const query = `
-                [out:json][timeout:30];
-                area["name"="อำเภอสันทราย"]["admin_level"="6"]->.searchArea;
-                (
-                  node["amenity"="fuel"](area.searchArea);
-                  way["amenity"="fuel"](area.searchArea);
-                );
-                out center;
-            `;
-            const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
-
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                let count = 0;
+        /**
+         * ==========================================
+         * โมดูล: ขอบเขตอำเภอ (Boundary Module)
+         * (ในโปรเจ็กต์จริงแยกเป็นไฟล์ js/module-boundary.js)
+         * ==========================================
+         */
+        const BoundaryModule = (function(app) {
+            async function load() {
+                app.updateStatus('status-boundary', 'กำลังโหลดขอบเขต...', true, true);
                 
-                gasStationLayer.clearLayers();
-                
-                if (data && data.elements) {
-                    data.elements.forEach(el => {
-                        const lat = el.lat || (el.center && el.center.lat);
-                        const lon = el.lon || (el.center && el.center.lon);
-                        
-                        if (lat && lon) {
-                            count++;
-                            const name = el.tags.name || "ปั๊มน้ำมัน";
-                            const brand = el.tags.brand || "";
-                            L.marker([lat, lon], { icon: gasIcon })
-                            .bindPopup(`<b>⛽ ${name}</b><br>${brand}`)
-                            .addTo(gasStationLayer);
-                        }
-                    });
-                }
-                statusEl.innerHTML = `✅ ข้อมูลแผนที่: พบปั๊ม ${count} แห่ง, รพ. 2 แห่ง`;
-                statusEl.style.color = '#27ae60';
-            } catch (error) {
-                console.error("เกิดข้อผิดพลาดในการโหลดปั๊มน้ำมัน:", error);
-                statusEl.innerHTML = `⚠️ โหลดปั๊มน้ำมันขัดข้อง (รพ. 2 แห่งพร้อมใช้งาน)`;
-                statusEl.style.color = '#e67e22';
-            }
-        }
+                // ใช้ Query ที่ปลอดภัยขึ้น โดยเจาะจงที่ Relation ของเชียงใหม่
+                const query = `
+                    [out:json][timeout:25];
+                    area["name"="เชียงใหม่"]["admin_level"="4"]->.province;
+                    rel["name"="สันทราย"]["admin_level"="6"](area.province);
+                    out geom;
+                `;
+                const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
 
-
-        // ==========================================
-        // โมดูล 5: ฟังก์ชันดึงข้อมูลโรงงาน (Google Sheets)
-        // ==========================================
-        const sheetId = '1qHJwpzbaFbn-ayQs4iAHodxAh1Lh5xiUuUHIL5t9v7k';
-        const gid = '0';
-        const csvExportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
-
-        function loadFactoriesFromSheet() {
-            const factoryStatusEl = document.getElementById('factory-status');
-            factoryStatusEl.innerHTML = "กำลังอ่านข้อมูลจาก Google Sheets ⏳...";
-            factoryStatusEl.style.color = '#e67e22';
-            factoryLayer.clearLayers();
-
-            Papa.parse(csvExportUrl, {
-                download: true,
-                header: false,
-                complete: function(results) {
-                    const data = results.data;
-                    let count = 0;
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
                     
-                    for (let i = 1; i < data.length; i++) {
-                        const row = data[i];
+                    app.layers.boundary.clearLayers();
+
+                    if (data && data.elements && data.elements.length > 0) {
+                        // ดึงพิกัดจาก relation type=boundary
+                        const relation = data.elements.find(e => e.type === 'relation' && e.tags && e.tags.boundary === 'administrative');
                         
-                        // ตรวจสอบข้อมูลว่าครบ 8 คอลัมน์ (Index 0-7)
-                        if (row && row.length >= 8) { 
-                            const coordsStr = row[7]; 
-                            
-                            if (coordsStr && coordsStr.includes(',')) {
-                                const parts = coordsStr.replace(/"/g, '').split(',');
-                                const lat = parseFloat(parts[0].trim());
-                                const lon = parseFloat(parts[1].trim());
-
-                                if (!isNaN(lat) && !isNaN(lon)) {
-                                    const rawName = row[1] || 'โรงงาน (ไม่มีชื่อ)';
-                                    const fullName = rawName.split('\n')[0].replace(/"/g, ''); 
-                                    const location = (row[2] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
-                                    const activity = (row[4] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
-                                    const riskDetails = (row[5] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
-                                    const riskLevel = (row[6] || 'ไม่ระบุ').replace(/"/g, '');
-
-                                    let markerColor = '#95a5a6';
-                                    let fillColor = '#bdc3c7';
-                                    
-                                    if (riskLevel.includes('🔴') || riskLevel.includes('เสี่ยงสูง')) {
-                                        markerColor = '#c0392b';
-                                        fillColor = '#e74c3c';
-                                    } else if (riskLevel.includes('🟡') || riskLevel.includes('ปานกลาง')) {
-                                        markerColor = '#d35400';
-                                        fillColor = '#f1c40f';
-                                    } else if (riskLevel.includes('🟢') || riskLevel.includes('เสี่ยงต่ำ')) {
-                                        markerColor = '#27ae60';
-                                        fillColor = '#2ecc71';
-                                    }
-
-                                    const popupHtml = `
-                                        <div class="custom-popup" style="min-width: 250px;">
-                                            <h4 style="color: ${markerColor};">🏭 ${fullName}</h4>
-                                            <div class="popup-section">
-                                                <strong>⚠️ ระดับความเสี่ยง:</strong><br>${riskLevel}
-                                            </div>
-                                            <div class="popup-section">
-                                                <strong>📍 สถานที่ตั้ง:</strong><br>${location}
-                                            </div>
-                                            <div class="popup-section">
-                                                <strong>⚙️ การประกอบกิจการ:</strong><br>${activity}
-                                            </div>
-                                            <div class="popup-section">
-                                                <strong>🔥 ความเสี่ยงที่อาจเกิดขึ้น:</strong><br>${riskDetails}
-                                            </div>
-                                        </div>
-                                    `;
-
-                                    L.circleMarker([lat, lon], {
-                                        radius: 8,
-                                        color: '#ffffff',
-                                        weight: 2,
-                                        fillColor: fillColor,
-                                        fillOpacity: 0.95
-                                    })
-                                    .bindPopup(popupHtml, { maxWidth: 300 })
-                                    .addTo(factoryLayer);
-
-                                    count++;
+                        if (relation && relation.members) {
+                            let latlngs = [];
+                            // รวบรวมพิกัดเส้นขอบเขตเฉพาะส่วน outer (ลบไข่แดง/inner ทิ้ง)
+                            relation.members.forEach(member => {
+                                if (member.type === 'way' && member.role === 'outer' && member.geometry) {
+                                    let wayCoords = member.geometry.map(p => [p.lat, p.lon]);
+                                    latlngs.push(wayCoords);
                                 }
+                            });
+
+                            if (latlngs.length > 0) {
+                                const boundaryLine = L.polyline(latlngs, {
+                                    color: 'red', weight: 4, opacity: 0.8
+                                });
+                                
+                                // เพิ่ม polygon แบบโปร่งแสงเพื่อความสวยงาม
+                                const boundaryFill = L.polygon(latlngs, {
+                                    color: 'red', weight: 0, fillOpacity: 0.05
+                                });
+
+                                app.layers.boundary.addLayer(boundaryLine);
+                                app.layers.boundary.addLayer(boundaryFill);
+                                app.map.fitBounds(boundaryLine.getBounds());
+                                
+                                app.updateStatus('status-boundary', 'ขอบเขตอำเภอพร้อมใช้งาน');
+                                return;
                             }
                         }
                     }
-                    
-                    if(count > 0) {
-                        factoryStatusEl.innerHTML = `✅ ข้อมูลโรงงาน: โหลดสำเร็จ ${count} แห่ง`;
-                        factoryStatusEl.style.color = '#27ae60';
-                    } else {
-                        factoryStatusEl.innerHTML = `⚠️ ไม่พบพิกัดโรงงาน (อาจติดสิทธิ์การแชร์)`;
-                        factoryStatusEl.style.color = '#e74c3c';
-                    }
-                },
-                error: function(err) {
-                    console.error("เกิดข้อผิดพลาดในการโหลดข้อมูลโรงงาน:", err);
-                    factoryStatusEl.innerHTML = "❌ เข้าถึง Google Sheets ไม่ได้ (ตรวจสอบการแชร์)";
-                    factoryStatusEl.style.color = '#c0392b';
+                    throw new Error("ไม่พบข้อมูลพิกัดขอบเขตในรูปแบบที่ถูกต้อง");
+                } catch (error) {
+                    console.error("Boundary Error:", error);
+                    app.updateStatus('status-boundary', 'โหลดขอบเขตไม่สำเร็จ', false);
                 }
-            });
-        }
+            }
+            return { load };
+        })(AppMap);
 
 
-        // ==========================================
-        // โมดูล 6: เมนูควบคุมเลเยอร์และการเริ่มทำงาน
-        // ==========================================
-        const baseMaps = {
-            "Google Maps (ถนน)": googleStreets,
-            "Google Hybrid (ดาวเทียม)": googleHybrid
-        };
+        /**
+         * ==========================================
+         * โมดูล: โรงพยาบาล (Hospital Module)
+         * (ในโปรเจ็กต์จริงแยกเป็นไฟล์ js/module-hospital.js)
+         * ==========================================
+         */
+        const HospitalModule = (function(app) {
+            function load() {
+                app.layers.hospital.clearLayers();
+                const icon = app.createEmojiIcon('🏥');
+                const locations = [
+                    { name: "รพ. สันทราย", lat: 18.921246, lon: 98.994203 },
+                    { name: "รพ. นครพิงค์", lat: 18.852547, lon: 98.968389 }
+                ];
+                locations.forEach(loc => {
+                    L.marker([loc.lat, loc.lon], { icon: icon })
+                    .bindPopup(`<b>🏥 ${loc.name}</b>`)
+                    .addTo(app.layers.hospital);
+                });
+            }
+            return { load };
+        })(AppMap);
 
-        const overlayMaps = {
-            "🟥 เส้นขอบเขต อ.สันทราย": boundaryLayer,
-            "🏥 โรงพยาบาล": hospitalLayer,
-            "⛽ ปั๊มน้ำมัน": gasStationLayer,
-            "📍 โรงงาน (แยกตามสี)": factoryLayer
-        };
 
-        L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+        /**
+         * ==========================================
+         * โมดูล: ปั๊มน้ำมัน (Gas Station Module)
+         * (ในโปรเจ็กต์จริงแยกเป็นไฟล์ js/module-gas.js)
+         * ==========================================
+         */
+        const GasStationModule = (function(app) {
+            async function load() {
+                app.updateStatus('status-gas', 'กำลังค้นหาปั๊มน้ำมัน...', true, true);
+                const icon = app.createEmojiIcon('⛽');
+                
+                // Query หาปั๊มน้ำมันในเชียงใหม่ (ตีกรอบกว้างขึ้นเล็กน้อยเพื่อป้องกัน error ขอบเขต)
+                const query = `
+                    [out:json][timeout:30];
+                    area["name"="สันทราย"]["admin_level"="6"]->.searchArea;
+                    (
+                      node["amenity"="fuel"](area.searchArea);
+                      way["amenity"="fuel"](area.searchArea);
+                    );
+                    out center;
+                `;
+                const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
 
-        // ผูกการทำงานปุ่มโหลดข้อมูลชีต
-        document.getElementById('btnLoadSheet').addEventListener('click', loadFactoriesFromSheet);
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    app.layers.gas.clearLayers();
+                    let count = 0;
+                    
+                    if (data && data.elements) {
+                        data.elements.forEach(el => {
+                            const lat = el.lat || (el.center && el.center.lat);
+                            const lon = el.lon || (el.center && el.center.lon);
+                            if (lat && lon) {
+                                count++;
+                                const name = el.tags.name || "ปั๊มน้ำมันทั่วไป";
+                                const brand = el.tags.brand || "";
+                                L.marker([lat, lon], { icon: icon })
+                                .bindPopup(`<b>⛽ ${name}</b>${brand ? `<br><small>${brand}</small>` : ''}`)
+                                .addTo(app.layers.gas);
+                            }
+                        });
+                    }
+                    app.updateStatus('status-gas', `พบปั๊มน้ำมัน ${count} แห่ง`);
+                } catch (error) {
+                    console.error("Gas Station Error:", error);
+                    app.updateStatus('status-gas', 'โหลดปั๊มน้ำมันขัดข้อง', false);
+                }
+            }
+            return { load };
+        })(AppMap);
 
-        // --- เริ่มต้นโหลดข้อมูลทั้งหมดพร้อมกันอย่างเป็นอิสระ ---
-        loadBoundary();
-        loadHospitals();
-        loadGasStations();
-        loadFactoriesFromSheet();
+
+        /**
+         * ==========================================
+         * โมดูล: โรงงาน (Factory Module)
+         * (ในโปรเจ็กต์จริงแยกเป็นไฟล์ js/module-factory.js)
+         * ==========================================
+         */
+        const FactoryModule = (function(app) {
+            const sheetUrl = 'https://docs.google.com/spreadsheets/d/1qHJwpzbaFbn-ayQs4iAHodxAh1Lh5xiUuUHIL5t9v7k/export?format=csv&gid=0';
+
+            function load() {
+                app.updateStatus('status-factory', 'กำลังอ่านข้อมูลจากชีต...', true, true);
+                app.layers.factory.clearLayers();
+
+                Papa.parse(sheetUrl, {
+                    download: true,
+                    header: false,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        let count = 0;
+                        results.data.forEach((row, index) => {
+                            if (index > 0 && row.length >= 8) { // ข้ามหัวตาราง
+                                const coordsStr = row[7];
+                                if (coordsStr && coordsStr.includes(',')) {
+                                    const parts = coordsStr.replace(/"/g, '').split(',');
+                                    const lat = parseFloat(parts[0].trim());
+                                    const lon = parseFloat(parts[1].trim());
+
+                                    if (!isNaN(lat) && !isNaN(lon)) {
+                                        createFactoryMarker(row, lat, lon);
+                                        count++;
+                                    }
+                                }
+                            }
+                        });
+                        
+                        if (count > 0) {
+                            app.updateStatus('status-factory', `ปักหมุดโรงงาน ${count} แห่ง`);
+                            if (!app.map.hasLayer(app.layers.factory)) app.map.addLayer(app.layers.factory);
+                        } else {
+                            app.updateStatus('status-factory', 'ไม่พบพิกัด หรือติดสิทธิ์การแชร์ชีต', false);
+                        }
+                    },
+                    error: function(err) {
+                        console.error("Factory CSV Error:", err);
+                        app.updateStatus('status-factory', 'เข้าถึง Google Sheets ไม่ได้', false);
+                    }
+                });
+            }
+
+            function createFactoryMarker(row, lat, lon) {
+                const fullName = (row[1] || 'ไม่มีชื่อ').split('\n')[0].replace(/"/g, ''); 
+                const location = (row[2] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
+                const activity = (row[4] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
+                const riskDetails = (row[5] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
+                const riskLevel = (row[6] || 'ไม่ระบุ').replace(/"/g, '');
+
+                let markerColor = '#95a5a6';
+                let fillColor = '#bdc3c7';
+                
+                if (riskLevel.includes('🔴') || riskLevel.includes('เสี่ยงสูง')) { markerColor = '#c0392b'; fillColor = '#e74c3c'; }
+                else if (riskLevel.includes('🟡') || riskLevel.includes('ปานกลาง')) { markerColor = '#d35400'; fillColor = '#f1c40f'; }
+                else if (riskLevel.includes('🟢') || riskLevel.includes('เสี่ยงต่ำ')) { markerColor = '#27ae60'; fillColor = '#2ecc71'; }
+
+                const popupHtml = `
+                    <div class="custom-popup" style="min-width: 250px;">
+                        <h4 style="color: ${markerColor};">🏭 ${fullName}</h4>
+                        <div class="popup-section"><strong>⚠️ ระดับความเสี่ยง:</strong><br>${riskLevel}</div>
+                        <div class="popup-section"><strong>📍 สถานที่ตั้ง:</strong><br>${location}</div>
+                        <div class="popup-section"><strong>⚙️ การประกอบกิจการ:</strong><br>${activity}</div>
+                        <div class="popup-section"><strong>🔥 ความเสี่ยงที่อาจเกิดขึ้น:</strong><br>${riskDetails}</div>
+                    </div>
+                `;
+
+                L.circleMarker([lat, lon], {
+                    radius: 8, color: '#ffffff', weight: 2, fillColor: fillColor, fillOpacity: 0.95
+                })
+                .bindPopup(popupHtml, { maxWidth: 320 })
+                .addTo(app.layers.factory);
+            }
+
+            return { load };
+        })(AppMap);
+
+
+        /**
+         * ==========================================
+         * เริ่มต้นการทำงาน (App Initialization)
+         * ==========================================
+         */
+        document.addEventListener('DOMContentLoaded', () => {
+            // โหลดโมดูลต่างๆ แบบอิสระต่อกัน
+            BoundaryModule.load();
+            HospitalModule.load();
+            GasStationModule.load();
+            FactoryModule.load();
+
+            // ปุ่มรีโหลดโรงงาน
+            document.getElementById('btnLoadSheet').addEventListener('click', FactoryModule.load);
+        });
 
     </script>
 </body>
