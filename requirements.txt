@@ -1,4 +1,6 @@
+streamlit
 pandas
 folium
 streamlit-folium
 requests
+altair<5
