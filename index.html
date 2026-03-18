@@ -8,7 +8,7 @@
     <!-- โหลด Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     
-    <!-- โหลด PapaParse สำหรับอ่านไฟล์ CSV -->
+    <!-- โหลด PapaParse สำหรับอ่านไฟล์ CSV/Google Sheets -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
@@ -71,6 +71,22 @@
         .popup-section strong {
             color: #34495e;
         }
+        /* ปุ่มดึงข้อมูล */
+        .btn-sync {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 10px;
+            width: 100%;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 8px;
+            transition: background 0.3s;
+        }
+        .btn-sync:hover {
+            background-color: #2980b9;
+        }
     </style>
 </head>
 <body>
@@ -78,20 +94,25 @@
     <div id="map"></div>
     <div class="info-box">
         <h3 style="margin: 0 0 10px 0; font-size: 16px;">📍 แผนที่โรงงาน อ.สันทราย</h3>
-        <small id="status" style="color: #e67e22;">กำลังโหลดข้อมูลแผนที่...</small>
+        
+        <div style="font-size: 12px; line-height: 1.5; margin-bottom: 10px;">
+            <div id="status" style="color: #e67e22;">กำลังโหลดข้อมูลแผนที่...</div>
+            <div id="factory-status" style="color: #3498db;">เตรียมดึงข้อมูลโรงงาน...</div>
+        </div>
         
         <!-- คำอธิบายสัญลักษณ์ความเสี่ยง -->
         <div class="legend">
-            <b>สัญลักษณ์ความเสี่ยง:</b><br>
+            <b>สัญลักษณ์ความเสี่ยงโรงงาน:</b><br>
             <div><span class="legend-color" style="background: #e74c3c; border-color: #c0392b;"></span> 🔴 เสี่ยงสูง (High Risk)</div>
             <div><span class="legend-color" style="background: #f1c40f; border-color: #f39c12;"></span> 🟡 เสี่ยงปานกลาง (Medium)</div>
             <div><span class="legend-color" style="background: #2ecc71; border-color: #27ae60;"></span> 🟢 เสี่ยงต่ำ (Low Risk)</div>
         </div>
 
-        <!-- ส่วนอัปโหลดไฟล์ CSV -->
+        <!-- ส่วนดึงข้อมูลจาก Google Sheets -->
         <div class="upload-section">
-            <b>อัปโหลดพิกัดโรงงาน (CSV):</b><br>
-            <input type="file" id="csvFileInput" accept=".csv" style="width: 100%; margin-top: 8px; font-size: 12px; cursor: pointer;">
+            <b>ดึงข้อมูลจาก Google Sheets:</b><br>
+            <button id="btnLoadSheet" class="btn-sync">🔄 โหลดข้อมูลโรงงานล่าสุด</button>
+            <small style="color: gray; display: block; margin-top: 5px;">* แผ่นงานต้องเปิดสิทธิ์การแชร์เป็นสาธารณะ</small>
         </div>
     </div>
 
@@ -208,24 +229,28 @@
                         }
                     });
                 }
-                statusEl.innerHTML = `✅ พร้อมใช้งาน (พบปั๊ม ${count} แห่ง, รพ. 2 แห่ง)`;
+                statusEl.innerHTML = `✅ ข้อมูลแผนที่: พบปั๊ม ${count} แห่ง, รพ. 2 แห่ง`;
                 statusEl.style.color = '#27ae60';
             });
 
-        // 6. === เลเยอร์โรงงานจากไฟล์ CSV ===
+        // 6. === เลเยอร์โรงงานจาก Google Sheets ===
         const factoryLayer = L.layerGroup().addTo(map);
+        const factoryStatusEl = document.getElementById('factory-status');
 
-        document.getElementById('csvFileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+        // URL ดึงข้อมูล CSV จาก Google Sheets
+        // รูปแบบ: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={GID}
+        const sheetId = '1qHJwpzbaFbn-ayQs4iAHodxAh1Lh5xiUuUHIL5t9v7k';
+        const gid = '0';
+        const csvExportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
 
-            statusEl.innerHTML = "กำลังอ่านข้อมูลโรงงาน...";
-            statusEl.style.color = '#e67e22';
-            
-            // ล้างข้อมูลเดิมก่อน (เผื่ออัปโหลดไฟล์ใหม่ทับ)
+        function loadFactoriesFromSheet() {
+            factoryStatusEl.innerHTML = "กำลังอ่านข้อมูลจาก Google Sheets ⏳...";
+            factoryStatusEl.style.color = '#e67e22';
             factoryLayer.clearLayers();
 
-            Papa.parse(file, {
+            Papa.parse(csvExportUrl, {
+                download: true, // สั่งให้ดาวน์โหลดข้อมูลจาก URL
+                header: false,
                 complete: function(results) {
                     const data = results.data;
                     let count = 0;
@@ -234,19 +259,18 @@
                         const row = data[i];
                         
                         // ตรวจสอบว่ามีข้อมูลถึงคอลัมน์ H (Index ที่ 7)
-                        if (row.length >= 8) { 
+                        if (row && row.length >= 8) { 
                             const coordsStr = row[7]; 
                             
                             if (coordsStr && coordsStr.includes(',')) {
-                                // ลบเครื่องหมายคำพูด (") ออกก่อนแปลงเป็นตัวเลข
                                 const parts = coordsStr.replace(/"/g, '').split(',');
                                 const lat = parseFloat(parts[0].trim());
                                 const lon = parseFloat(parts[1].trim());
 
                                 if (!isNaN(lat) && !isNaN(lon)) {
-                                    // จัดเตรียมข้อมูลและแทนที่ ขึ้นบรรทัดใหม่ ด้วย <br>
+                                    // จัดเตรียมข้อมูลสำหรับ Popup
                                     const rawName = row[1] || 'โรงงาน (ไม่มีชื่อ)';
-                                    const fullName = rawName.split('\n')[0].replace(/"/g, ''); // เอาเฉพาะบรรทัดแรกมาเป็นชื่อหลัก
+                                    const fullName = rawName.split('\n')[0].replace(/"/g, ''); 
                                     const location = (row[2] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
                                     const activity = (row[4] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
                                     const riskDetails = (row[5] || 'ไม่ระบุ').replace(/\n/g, '<br>').replace(/"/g, '');
@@ -267,7 +291,7 @@
                                         fillColor = '#2ecc71';
                                     }
 
-                                    // โครงสร้าง HTML สำหรับหน้าต่างรายละเอียด (Popup)
+                                    // โครงสร้าง HTML สำหรับ Popup
                                     const popupHtml = `
                                         <div class="custom-popup" style="min-width: 250px;">
                                             <h4 style="color: ${markerColor};">🏭 ${fullName}</h4>
@@ -294,15 +318,15 @@
                                         </div>
                                     `;
 
-                                    // สร้างหมุดวงกลมที่มีสีตามความเสี่ยง
+                                    // สร้างหมุดวงกลมตามสีความเสี่ยง
                                     L.circleMarker([lat, lon], {
                                         radius: 8,
-                                        color: '#ffffff', // ขอบสีขาวให้ดูเด่น
+                                        color: '#ffffff',
                                         weight: 2,
                                         fillColor: fillColor,
                                         fillOpacity: 0.95
                                     })
-                                    .bindPopup(popupHtml, { maxWidth: 300 }) // ตั้งค่าความกว้างสูงสุดของ Popup
+                                    .bindPopup(popupHtml, { maxWidth: 300 })
                                     .addTo(factoryLayer);
 
                                     count++;
@@ -310,8 +334,14 @@
                             }
                         }
                     }
-                    statusEl.innerHTML = `✅ ปักหมุดโรงงานสำเร็จ ${count} แห่ง!`;
-                    statusEl.style.color = '#27ae60';
+                    
+                    if(count > 0) {
+                        factoryStatusEl.innerHTML = `✅ ข้อมูลโรงงาน: โหลดสำเร็จ ${count} แห่ง`;
+                        factoryStatusEl.style.color = '#27ae60';
+                    } else {
+                        factoryStatusEl.innerHTML = `⚠️ ไม่พบพิกัดโรงงาน (อาจติดสิทธิ์การแชร์)`;
+                        factoryStatusEl.style.color = '#e74c3c';
+                    }
                     
                     // สั่งให้แผนที่แสดงเลเยอร์โรงงานหากถูกปิดไว้
                     if (!map.hasLayer(factoryLayer)) {
@@ -320,11 +350,17 @@
                 },
                 error: function(err) {
                     console.error(err);
-                    statusEl.innerHTML = "❌ เกิดข้อผิดพลาดในการอ่านไฟล์";
-                    statusEl.style.color = '#c0392b';
+                    factoryStatusEl.innerHTML = "❌ เข้าถึง Google Sheets ไม่ได้ (ตรวจสอบการแชร์)";
+                    factoryStatusEl.style.color = '#c0392b';
                 }
             });
-        });
+        }
+
+        // โหลดข้อมูลอัตโนมัติเมื่อเปิดหน้าเว็บ
+        loadFactoriesFromSheet();
+
+        // โหลดใหม่เมื่อกดปุ่ม
+        document.getElementById('btnLoadSheet').addEventListener('click', loadFactoriesFromSheet);
 
         // 7. ส่วนควบคุมเลเยอร์
         const baseMaps = {
