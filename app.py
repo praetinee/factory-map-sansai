@@ -9,16 +9,12 @@ import requests
 # ==========================================
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
-# แทรก CSS เพื่อโหลดและตั้งค่าฟอนต์ Sarabun ให้กับทั้งแอป
+# แทรก CSS เพื่อโหลดและตั้งค่าฟอนต์ Sarabun ให้กับทั้งแอป (บังคับใช้กับทุกส่วน)
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
         
-        html, body, [class*="css"] {
-            font-family: 'Sarabun', sans-serif !important;
-        }
-        
-        h1, h2, h3, h4, h5, h6 {
+        * {
             font-family: 'Sarabun', sans-serif !important;
         }
     </style>
