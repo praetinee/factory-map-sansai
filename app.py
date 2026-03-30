@@ -123,7 +123,7 @@ if "last_processed_click" not in st.session_state:
 if "route_data" not in st.session_state:
     st.session_state.route_data = None 
 
-# หากผู้ใช้คลิกครบ 2 จุด ให้คำนวณเส้นทางอัตโนมัติก่อนที่จะนำไปวาดบนแผนที่
+# หากผู้ใช้มีจุด 2 จุดในความจำ ให้คำนวณเส้นทางอัตโนมัติก่อนที่จะนำไปวาดบนแผนที่
 if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None:
     with st.spinner('กำลังประมวลผลเส้นทาง...'):
         lat1, lon1 = st.session_state.map_clicks[0]
@@ -142,12 +142,51 @@ if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None
                 'straight_dist': straight_dist
             }
         else:
-            st.sidebar.error("❌ ไม่สามารถคำนวณเส้นทางได้ (จุดที่คลิกอาจอยู่ห่างไกลถนนเกินไป)")
-            # ลบจุดที่ 2 ออกเพื่อให้คลิกใหม่ได้
+            st.sidebar.error("❌ ไม่สามารถคำนวณเส้นทางได้ (จุดที่เลือกอาจอยู่ห่างไกลถนนเกินไป)")
+            # ลบจุดที่ 2 ออกเพื่อให้เลือกใหม่ได้
             st.session_state.map_clicks.pop()
 
 # ==========================================
-# 4. ส่วนแถบเมนูด้านข้าง (Sidebar)
+# 4. เตรียมข้อมูลพิกัดสถานที่ทั้งหมด (ใช้สำหรับ Dropdown)
+# ==========================================
+boundary_geo = load_boundary()
+gas_stations = load_gas_stations()
+df_factories = load_factories()
+
+locations_dict = {}
+
+hospitals = [
+    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
+    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
+]
+for h in hospitals:
+    locations_dict[f"🏥 {h['name']}"] = (h['lat'], h['lon'])
+
+for el in gas_stations:
+    lat = el.get('lat') or (el.get('center', {}).get('lat'))
+    lon = el.get('lon') or (el.get('center', {}).get('lon'))
+    if lat and lon:
+        name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
+        brand = el.get('tags', {}).get('brand', '')
+        display_name = f"⛽ {name}" if name != 'ปั๊มน้ำมันทั่วไป' else f"⛽ {brand} (ปั๊มน้ำมัน)"
+        locations_dict[display_name] = (lat, lon)
+
+if not df_factories.empty:
+    for idx, row in df_factories.iterrows():
+        try:
+            if len(row) >= 8 and pd.notna(row.iloc[7]):
+                coords_str = str(row.iloc[7]).strip()
+                if ',' in coords_str:
+                    lat_str, lon_str = coords_str.replace('"', '').split(',')
+                    lat, lon = float(lat_str.strip()), float(lon_str.strip())
+                    raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
+                    full_name = raw_name.split('\n')[0].replace('"', '')
+                    locations_dict[f"🏭 {full_name}"] = (lat, lon)
+        except Exception:
+            pass
+
+# ==========================================
+# 5. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
 st.sidebar.header("⚙️ การจัดการข้อมูล")
 
@@ -165,26 +204,50 @@ st.sidebar.success("**🟢 เสี่ยงต่ำ (Low Risk)**\n\nกิจ
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
 
-# เพิ่มสวิตช์ Toggle สำหรับเลือกโหมด
-enable_routing_click = st.sidebar.toggle("🖱️ เปิดโหมดคลิกเพื่อนำทาง", value=False)
+# วิชเก็ตตัวเลือกโหมดการใช้งาน
+mode = st.sidebar.radio(
+    "โหมดการใช้งานแผนที่",
+    ["🔍 ดูข้อมูลปกติ", "🖱️ คลิกบนแผนที่", "📋 เลือกจากรายชื่อ"]
+)
 
-if enable_routing_click:
-    st.sidebar.info("💡 **สถานะ: เปิดโหมดนำทาง** \n- คลิก 1 ครั้ง: จุดเกิดเหตุ\n- คลิก 2 ครั้ง: จุดปลายทาง")
-else:
-    st.sidebar.info("💡 **สถานะ: โหมดดูข้อมูลปกติ** \n- คุณสามารถคลิกดูรายละเอียดโรงงานบนแผนที่ได้โดยที่พิกัดจะไม่ถูกนำไปคำนวณ")
+enable_routing_click = False
 
-# แสดงพิกัดที่คลิก
-c1_txt = f"{st.session_state.map_clicks[0][0]:.4f}, {st.session_state.map_clicks[0][1]:.4f}" if len(st.session_state.map_clicks) > 0 else "รอคลิกแผนที่..."
-c2_txt = f"{st.session_state.map_clicks[1][0]:.4f}, {st.session_state.map_clicks[1][1]:.4f}" if len(st.session_state.map_clicks) > 1 else "รอคลิกแผนที่..."
+# การแสดงผลตามโหมดที่เลือก
+if mode == "🔍 ดูข้อมูลปกติ":
+    st.sidebar.info("💡 **สถานะ: ดูข้อมูลปกติ** \nคลิกที่หมุดบนแผนที่เพื่อดูรายละเอียดโรงงาน/ปั๊มน้ำมัน การคลิกจะไม่ถูกนำไปคำนวณเส้นทาง")
 
-st.sidebar.markdown(f"🔥 **จุดเกิดเหตุ:** {c1_txt}")
-st.sidebar.markdown(f"🏁 **จุดปลายทาง:** {c2_txt}")
+elif mode == "🖱️ คลิกบนแผนที่":
+    enable_routing_click = True
+    st.sidebar.info("💡 **วิธีใช้งาน:** \n- **คลิก 1 ครั้ง:** จุดเกิดเหตุ\n- **คลิก 2 ครั้ง:** จุดปลายทาง")
+    c1_txt = f"{st.session_state.map_clicks[0][0]:.4f}, {st.session_state.map_clicks[0][1]:.4f}" if len(st.session_state.map_clicks) > 0 else "รอคลิกแผนที่..."
+    c2_txt = f"{st.session_state.map_clicks[1][0]:.4f}, {st.session_state.map_clicks[1][1]:.4f}" if len(st.session_state.map_clicks) > 1 else "รอคลิกแผนที่..."
+    st.sidebar.markdown(f"🔥 **จุดเกิดเหตุ:** {c1_txt}")
+    st.sidebar.markdown(f"🏁 **จุดปลายทาง:** {c2_txt}")
 
-if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
-    st.session_state.map_clicks = []
-    st.session_state.route_data = None
-    st.session_state.last_processed_click = None
-    st.rerun()
+elif mode == "📋 เลือกจากรายชื่อ":
+    st.sidebar.info("💡 เลือกระบุจุดเริ่มต้นและปลายทางจากรายชื่อสถานที่")
+    if locations_dict:
+        location_names = list(locations_dict.keys())
+        point1 = st.sidebar.selectbox("จุดเริ่มต้น (เช่น จุดเกิดเหตุ)", options=location_names, index=0)
+        point2 = st.sidebar.selectbox("จุดปลายทาง (เช่น ศูนย์อพยพ/รพ.)", options=location_names, index=1 if len(location_names) > 1 else 0)
+        
+        if st.sidebar.button("🚀 คำนวณเส้นทาง", type="primary", use_container_width=True):
+            lat1, lon1 = locations_dict[point1]
+            lat2, lon2 = locations_dict[point2]
+            
+            # บันทึกพิกัดลงในความจำแล้วบังคับรีโหลดให้โปรแกรมคำนวณ
+            st.session_state.map_clicks = [(lat1, lon1), (lat2, lon2)]
+            st.session_state.route_data = None
+            st.session_state.map_center = [lat1, lon1] # เลื่อนศูนย์กลางแผนที่ไปจุดเกิดเหตุ
+            st.rerun()
+
+# ปุ่มล้างข้อมูลแสดงตลอดถ้ามีข้อมูล
+if len(st.session_state.map_clicks) > 0 or st.session_state.route_data:
+    if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
+        st.session_state.map_clicks = []
+        st.session_state.route_data = None
+        st.session_state.last_processed_click = None
+        st.rerun()
 
 # แสดงผลการประเมิน (เมื่อได้เส้นทางแล้ว)
 if st.session_state.route_data:
@@ -210,17 +273,8 @@ if st.session_state.route_data:
 
 
 # ==========================================
-# 5. โหลดข้อมูลแผนที่หลัก
+# 6. โหลดข้อมูลแผนที่หลัก (Folium)
 # ==========================================
-boundary_geo = load_boundary()
-gas_stations = load_gas_stations()
-df_factories = load_factories()
-
-hospitals = [
-    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
-    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
-]
-
 # ดึงตำแหน่งล่าสุดของแผนที่มาจาก Session State
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
 
@@ -288,7 +342,7 @@ if not df_factories.empty:
             continue
 
 # ==========================================
-# 6. วาดเส้นทางและวงกลมบนแผนที่ (Folium)
+# 7. วาดเส้นทางและวงกลมบนแผนที่
 # ==========================================
 if len(st.session_state.map_clicks) >= 1:
     folium.Marker(st.session_state.map_clicks[0], icon=folium.Icon(color='darkred', icon='fire', prefix='fa'), tooltip="จุดเกิดเหตุ (Start)").add_to(m)
@@ -318,9 +372,8 @@ fg_impact_zones.add_to(m)
 folium.LayerControl(collapsed=False).add_to(m)
 
 # ==========================================
-# 7. Render แผนที่และดักจับ Event การคลิกเมาส์
+# 8. Render แผนที่และดักจับ Event การคลิกเมาส์
 # ==========================================
-# แก้ไข returned_objects: ลบ center และ zoom ออก เพื่อป้องกันไม่ให้ Streamlit รีเฟรชแอปทุกครั้งที่เลื่อนหรือซูมแผนที่
 map_data = st_folium(m, width="100%", height=700, returned_objects=["last_object_clicked", "last_clicked"])
 
 # ดักจับพิกัดจากการคลิกของแผนที่
@@ -338,7 +391,7 @@ if clicked_point and clicked_point != st.session_state.last_processed_click:
     # อัปเดตจุดกึ่งกลางแผนที่เป็นพิกัดที่เพิ่งคลิก เพื่อป้องกันไม่ให้แผนที่เด้งกลับไปที่หน้าแรก
     st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
     
-    # ถ้าเปิดสวิตช์ "โหมดคลิกเพื่อนำทาง" ค่อยเอาพิกัดไปคำนวณ
+    # ถ้าอยู่ใน "โหมดคลิกบนแผนที่" ถึงจะเอาพิกัดไปคำนวณ
     if enable_routing_click:
         if len(st.session_state.map_clicks) >= 2:
             st.session_state.map_clicks = [(clicked_point['lat'], clicked_point['lng'])]
@@ -346,4 +399,4 @@ if clicked_point and clicked_point != st.session_state.last_processed_click:
         else:
             st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
         
-        st.rerun() # รีเฟรชแผนที่เมื่ออยู่ในโหมดนำทาง
+        st.rerun() # รีเฟรชเพื่อวาดหมุด/เส้นทาง
