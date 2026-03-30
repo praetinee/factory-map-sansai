@@ -1,22 +1,24 @@
 import streamlit as st
 import pandas as pd
 import folium
+from folium.plugins import MeasureControl  # นำเข้าปลั๊กอินสำหรับวัดระยะทางบนแผนที่
 from streamlit_folium import st_folium
 import requests
 import math  # นำเข้าโมดูล math สำหรับคำนวณระยะทาง
 
 # ==========================================
-# 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Sarabun
+# 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Google Sans
 # ==========================================
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
-# แทรก CSS เพื่อโหลดและตั้งค่าฟอนต์ Sarabun ให้กับทั้งแอป (บังคับใช้กับทุกส่วน)
+# แทรก CSS เพื่อโหลดและตั้งค่าฟอนต์ Google Sans และ Noto Sans Thai ให้กับทั้งแอป
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.cdnfonts.com/css/google-sans');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
         
         * {
-            font-family: 'Sarabun', sans-serif !important;
+            font-family: 'Google Sans', 'Noto Sans Thai', sans-serif !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -182,7 +184,11 @@ st.sidebar.success("""
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📏 เครื่องมือคำนวณระยะทาง")
-with st.sidebar.expander("คำนวณระยะทางระหว่าง 2 สถานที่", expanded=False):
+
+# เพิ่มคำแนะนำการใช้งานเครื่องมือบนแผนที่
+st.sidebar.info("💡 **ทิปส์:** คุณสามารถคลิกไอคอน 📏 ที่มุมซ้ายบนของแผนที่ เพื่อใช้เมาส์คลิกวัดระยะทางระหว่างจุดใดๆ บนแผนที่ได้โดยตรง!")
+
+with st.sidebar.expander("คำนวณระยะทางจากรายชื่อสถานที่", expanded=False):
     if locations_dict:
         location_names = list(locations_dict.keys())
         
@@ -208,6 +214,14 @@ with st.sidebar.expander("คำนวณระยะทางระหว่า
 # ==========================================
 # 5.1 สร้างแผนที่เปล่า
 m = folium.Map(location=[18.9135, 99.0279], zoom_start=11)
+
+# เพิ่มเครื่องมือวัดระยะทางแบบคลิกบนแผนที่ (MeasureControl)
+m.add_child(MeasureControl(
+    position='topleft', 
+    primary_length_unit='kilometers', 
+    secondary_length_unit='meters', 
+    primary_area_unit='sqmeters'
+))
 
 # เพิ่ม Tile Layer (พื้นหลัง Google Maps)
 folium.TileLayer(
@@ -242,10 +256,11 @@ if boundary_geo:
 for h in hospitals:
     icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
     
-    # เพิ่มฟอนต์ Sarabun ให้ Popup
+    # เพิ่มฟอนต์ Google Sans ให้ Popup
     popup_html = f"""
-        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
-        <div style="font-family: 'Sarabun', sans-serif;"><b>🏥 {h['name']}</b></div>
+        <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>🏥 {h['name']}</b></div>
     """
     
     folium.Marker(
@@ -264,10 +279,11 @@ for el in gas_stations:
         
         icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>⛽</div>"
         
-        # เพิ่มฟอนต์ Sarabun ให้ Popup
+        # เพิ่มฟอนต์ Google Sans ให้ Popup
         popup_html = f"""
-            <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
-            <div style="font-family: 'Sarabun', sans-serif;">
+            <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+            <div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;">
                 <b>⛽ {name}</b><br><small>{brand}</small>
             </div>
         """
@@ -306,11 +322,12 @@ if not df_factories.empty:
                     elif '🟢' in risk_level or 'เสี่ยงต่ำ' in risk_level:
                         marker_color, fill_color = '#27ae60', '#2ecc71'
 
-                    # นำเข้าฟอนต์ Sarabun และกำหนดให้ใช้งานกับหน้าต่าง Popup
+                    # นำเข้าฟอนต์ Google Sans และกำหนดให้ใช้งานกับหน้าต่าง Popup
                     popup_html = f"""
-                        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-                        <div style="min-width: 250px; font-family: 'Sarabun', sans-serif;">
-                            <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0; font-family: 'Sarabun', sans-serif;">🏭 {full_name}</h4>
+                        <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
+                        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+                        <div style="min-width: 250px; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;">
+                            <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;">🏭 {full_name}</h4>
                             <div style="margin-bottom: 8px;"><strong>⚠️ ระดับความเสี่ยง:</strong><br>{risk_level}</div>
                             <div style="margin-bottom: 8px;"><strong>📍 สถานที่ตั้ง:</strong><br>{location}</div>
                             <div style="margin-bottom: 8px;"><strong>⚙️ การประกอบกิจการ:</strong><br>{activity}</div>
