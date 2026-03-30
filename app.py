@@ -11,6 +11,7 @@ import math
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
 # แทรก CSS เพื่อโหลดฟอนต์ โดยปรับให้ปลอดภัย ไม่ไปกระทบกับไอคอน (SVG) ของ Streamlit
+# พร้อมกับลดพื้นที่ขอบจอเพื่อให้แผนที่แสดงผลได้กว้างที่สุด
 st.markdown("""
     <style>
         @import url('https://fonts.cdnfonts.com/css/google-sans');
@@ -24,6 +25,13 @@ st.markdown("""
         /* ป้องกันไม่ให้ฟอนต์ไปทับไอคอนลูกศร, เมนูย่อขยาย หรือกราฟิก SVG ต่างๆ */
         svg, svg *, i, .material-icons, [class*="icon"] {
             font-family: inherit !important;
+        }
+        
+        /* ขยายพื้นที่หน้าจอให้กว้างที่สุด และลดขอบบน-ล่าง */
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+            max-width: 98% !important; /* บังคับให้ขยายชิดขอบจอมากขึ้น */
         }
     </style>
 """, unsafe_allow_html=True)
@@ -374,7 +382,13 @@ folium.LayerControl(collapsed=False).add_to(m)
 # ==========================================
 # 8. Render แผนที่และดักจับ Event การคลิกเมาส์
 # ==========================================
-map_data = st_folium(m, width="100%", height=700, returned_objects=["last_object_clicked", "last_clicked"])
+# ปรับใช้ use_container_width=True เพื่อให้กว้างสุด และเพิ่มความสูงเป็น 850
+map_data = st_folium(
+    m, 
+    use_container_width=True, 
+    height=850, 
+    returned_objects=["last_object_clicked", "last_clicked"]
+)
 
 # ดักจับพิกัดจากการคลิกของแผนที่
 clicked_point = None
