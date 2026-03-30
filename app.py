@@ -11,15 +11,23 @@ import math
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
 # แทรก CSS เพื่อโหลดฟอนต์ โดยปรับให้ปลอดภัย ไม่ไปกระทบกับไอคอน (SVG) ของ Streamlit
-# พร้อมกับลดพื้นที่ขอบจอเพื่อให้แผนที่แสดงผลได้กว้างที่สุดแบบ 100%
+# เพิ่มการแก้ไขปัญหา "ไม้เอกหาย" หรือสระบนถูกตัด
 st.markdown("""
     <style>
         @import url('https://fonts.cdnfonts.com/css/google-sans');
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
         
-        /* กำหนดฟอนต์ให้เฉพาะแท็กข้อความทั่วไป */
+        /* กำหนดฟอนต์ให้เฉพาะแท็กข้อความทั่วไป พร้อมขยายความสูงบรรทัดกันตัวอักษรโดนตัด */
         html, body, p, h1, h2, h3, h4, h5, h6, span, label, div {
             font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;
+            line-height: 1.6 !important; 
+        }
+        
+        /* เพิ่มพื้นที่ด้านบนให้หัวข้อใหญ่ เพื่อให้แสดงไม้เอกและสระบนได้อย่างสมบูรณ์ */
+        h1, h2, h3 {
+            padding-top: 0.3em !important;
+            padding-bottom: 0.2em !important;
+            overflow: visible !important;
         }
         
         /* ป้องกันไม่ให้ฟอนต์ไปทับไอคอนลูกศร, เมนูย่อขยาย หรือกราฟิก SVG ต่างๆ */
