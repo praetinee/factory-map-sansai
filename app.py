@@ -211,45 +211,32 @@ with st.sidebar.expander("คำนวณเส้นทางและประ
                 st.session_state.route_data = None
                 st.rerun()
 
-    # แสดงผลการคำนวณและประเมินโซน
+    # แสดงผลการคำนวณและประเมินโซน (เปลี่ยนมาใช้ Native Components ของ Streamlit เพื่อป้องกันบั๊ก HTML)
     if st.session_state.route_data:
         rd = st.session_state.route_data
+        s_dist = rd['straight_dist']
+        
+        st.markdown("---")
+        st.markdown("#### 🚗 สรุปการเดินทาง")
+        st.markdown(f"📍 **จาก:** {rd['name1']}")
+        st.markdown(f"🎯 **ถึง:** {rd['name2']}")
+        
+        # ใช้ Metric ในการแสดงตัวเลขให้สวยงาม
+        col1, col2 = st.columns(2)
+        col1.metric("ระยะทางขับรถ", f"{rd['dist']:.2f} กม.")
+        col2.metric("เวลาเดินทาง", f"~ {rd['dur']:.0f} นาที")
+        
+        st.markdown("---")
+        st.markdown("#### 🎯 ประเมินรัศมีผลกระทบ")
+        st.caption(f"ระยะกระจัด (เส้นตรง) จากจุดเกิดเหตุ: {s_dist:.2f} กม.")
         
         # ประเมิน Zone ทางอาชีวเวชกรรม (อ้างอิง ERG พื้นฐาน)
-        s_dist = rd['straight_dist']
         if s_dist <= 0.5:
-            zone_color = "#dc2626" # Red
-            zone_bg = "#fef2f2"
-            zone_text = "🔴 โซนอันตราย (Hot Zone) < 500ม."
-            zone_desc = "อันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที"
+            st.error("**🔴 โซนอันตราย (Hot Zone) < 500ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
         elif s_dist <= 2.0:
-            zone_color = "#d97706" # Yellow/Orange
-            zone_bg = "#fffbeb"
-            zone_text = "🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม."
-            zone_desc = "อาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)"
+            st.warning("**🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม.**\n\nอาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)")
         else:
-            zone_color = "#059669" # Green
-            zone_bg = "#f0fdf4"
-            zone_text = "🟢 โซนปลอดภัย (Cold Zone) > 2กม."
-            zone_desc = "อยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล"
-
-        # แสดงกล่องสรุปผล
-        st.markdown(f"""
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-top: 10px;">
-            <div style="font-size: 14px; margin-bottom: 8px;"><b>การเดินทาง (ขับรถ)</b></div>
-            <div style="font-size: 13px;">📍 <b>จาก:</b> {rd['name1']}</div>
-            <div style="font-size: 13px; margin-bottom: 8px;">🎯 <b>ถึง:</b> {rd['name2']}</div>
-            <div style="font-size: 14px;">🚗 ระยะทาง: <b>{rd['dist']:.2f} กม.</b> (ใช้เวลา ~{rd['dur']:.0f} นาที)</div>
-            
-            <hr style="margin: 10px 0;">
-            
-            <div style="font-size: 14px; margin-bottom: 8px;"><b>ประเมินรัศมีผลกระทบ (เส้นตรง: {s_dist:.2f} กม.)</b></div>
-            <div style="background-color: {zone_bg}; border-left: 4px solid {zone_color}; padding: 8px; border-radius: 4px;">
-                <div style="color: {zone_color}; font-weight: bold; font-size: 13px;">{zone_text}</div>
-                <div style="font-size: 12px; color: #4b5563; margin-top: 4px;">{zone_desc}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            st.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
 
 # ==========================================
 # 5. การสร้างแผนที่ด้วย Folium
