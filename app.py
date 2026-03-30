@@ -33,7 +33,7 @@ st.title("📍 แผนที่ความเสี่ยงโรงงา�
 st.markdown("แสดงพิกัดโรงงานตามระดับความเสี่ยง พร้อมเลเยอร์ขอบเขต ปั๊มน้ำมัน และโรงพยาบาล")
 
 # ==========================================
-# 2. ฟังก์ชันดึงข้อมูลและระบบนำทาง
+# 2. ฟังก์ชันดึงข้อมูล ระบบนำทาง และคำนวณระยะ
 # ==========================================
 
 @st.cache_data(ttl=3600)
@@ -100,6 +100,17 @@ def get_driving_route(lat1, lon1, lat2, lon2):
         pass
     return None, None, None
 
+# ฟังก์ชันคำนวณระยะกระจัด (เส้นตรง) เพื่อประเมินรัศมีผลกระทบ
+def calculate_straight_distance(lat1, lon1, lat2, lon2):
+    R = 6371.0 # รัศมีโลก (กม.)
+    lat1_rad, lon1_rad = math.radians(lat1), math.radians(lon1)
+    lat2_rad, lon2_rad = math.radians(lat2), math.radians(lon2)
+    dlon = lon2_rad - lon1_rad
+    dlat = lat2_rad - lat1_rad
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
 # ==========================================
 # 3. เตรียมข้อมูลพิกัดสถานที่ทั้งหมดล่วงหน้า
 # ==========================================
@@ -156,27 +167,30 @@ st.sidebar.warning("**🟡 เสี่ยงปานกลาง (Medium)**\n\
 st.sidebar.success("**🟢 เสี่ยงต่ำ (Low Risk)**\n\nกิจการขนาดเล็กทั่วไปที่ไม่ได้อยู่ในหมวดอันตราย และเครื่องจักร < 100 HP")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🚗 ระบบนำทางและระยะทาง")
-st.sidebar.info("💡 **ทิปส์:** คุณสามารถคลิกจุดใดๆ บนแผนที่ 2 จุด เพื่อสร้างเส้นทางขับรถอัตโนมัติได้เลย!")
+st.sidebar.markdown("### 🚗 ระบบนำทางและประเมินอุบัติภัย")
+st.sidebar.info("💡 **ทิปส์:** เลือกระบุจุดเริ่มต้นเพื่อดูวงแหวนประเมินรัศมีผลกระทบทางอาชีวเวชกรรม (ER Zones) บนแผนที่")
 
 if "route_data" not in st.session_state:
     st.session_state.route_data = None
 
-with st.sidebar.expander("คำนวณเส้นทางจากรายชื่อสถานที่", expanded=False):
+with st.sidebar.expander("คำนวณเส้นทางและประเมินผลกระทบ", expanded=True):
     if locations_dict:
         location_names = list(locations_dict.keys())
         
-        point1 = st.selectbox("จุดเริ่มต้น", options=location_names, index=0)
-        point2 = st.selectbox("จุดปลายทาง", options=location_names, index=1 if len(location_names) > 1 else 0)
+        point1 = st.selectbox("จุดเริ่มต้น (เช่น จุดเกิดเหตุ)", options=location_names, index=0)
+        point2 = st.selectbox("จุดปลายทาง (เช่น ศูนย์อพยพ/รพ.)", options=location_names, index=1 if len(location_names) > 1 else 0)
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("คำนวณเส้นทาง", type="primary", use_container_width=True):
+            if st.button("คำนวณและประเมิน", type="primary", use_container_width=True):
                 lat1, lon1 = locations_dict[point1]
                 lat2, lon2 = locations_dict[point2]
                 
-                with st.spinner('กำลังค้นหาเส้นทาง...'):
+                with st.spinner('กำลังคำนวณ...'):
+                    # คำนวณเส้นทางขับรถ
                     dist_km, dur_min, coords = get_driving_route(lat1, lon1, lat2, lon2)
+                    # คำนวณระยะกระจัด (รัศมีตรง)
+                    straight_dist = calculate_straight_distance(lat1, lon1, lat2, lon2)
                 
                 if dist_km is not None:
                     st.session_state.route_data = {
@@ -186,7 +200,8 @@ with st.sidebar.expander("คำนวณเส้นทางจากราย
                         'dur': dur_min,
                         'coords': coords,
                         'start': (lat1, lon1),
-                        'end': (lat2, lon2)
+                        'end': (lat2, lon2),
+                        'straight_dist': straight_dist
                     }
                 else:
                     st.error("ไม่สามารถคำนวณเส้นทางได้ กรุณาลองใหม่อีกครั้ง")
@@ -196,14 +211,45 @@ with st.sidebar.expander("คำนวณเส้นทางจากราย
                 st.session_state.route_data = None
                 st.rerun()
 
+    # แสดงผลการคำนวณและประเมินโซน
     if st.session_state.route_data:
         rd = st.session_state.route_data
-        st.success(f"""
-        📍 **{rd['name1']}** ➔ **{rd['name2']}**
         
-        🚗 ระยะทาง: **{rd['dist']:.2f} กม.**
-        ⏳ เวลาเดินทาง: **~ {rd['dur']:.0f} นาที**
-        """)
+        # ประเมิน Zone ทางอาชีวเวชกรรม (อ้างอิง ERG พื้นฐาน)
+        s_dist = rd['straight_dist']
+        if s_dist <= 0.5:
+            zone_color = "#dc2626" # Red
+            zone_bg = "#fef2f2"
+            zone_text = "🔴 โซนอันตราย (Hot Zone) < 500ม."
+            zone_desc = "อันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที"
+        elif s_dist <= 2.0:
+            zone_color = "#d97706" # Yellow/Orange
+            zone_bg = "#fffbeb"
+            zone_text = "🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม."
+            zone_desc = "อาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)"
+        else:
+            zone_color = "#059669" # Green
+            zone_bg = "#f0fdf4"
+            zone_text = "🟢 โซนปลอดภัย (Cold Zone) > 2กม."
+            zone_desc = "อยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล"
+
+        # แสดงกล่องสรุปผล
+        st.markdown(f"""
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-top: 10px;">
+            <div style="font-size: 14px; margin-bottom: 8px;"><b>การเดินทาง (ขับรถ)</b></div>
+            <div style="font-size: 13px;">📍 <b>จาก:</b> {rd['name1']}</div>
+            <div style="font-size: 13px; margin-bottom: 8px;">🎯 <b>ถึง:</b> {rd['name2']}</div>
+            <div style="font-size: 14px;">🚗 ระยะทาง: <b>{rd['dist']:.2f} กม.</b> (ใช้เวลา ~{rd['dur']:.0f} นาที)</div>
+            
+            <hr style="margin: 10px 0;">
+            
+            <div style="font-size: 14px; margin-bottom: 8px;"><b>ประเมินรัศมีผลกระทบ (เส้นตรง: {s_dist:.2f} กม.)</b></div>
+            <div style="background-color: {zone_bg}; border-left: 4px solid {zone_color}; padding: 8px; border-radius: 4px;">
+                <div style="color: {zone_color}; font-weight: bold; font-size: 13px;">{zone_text}</div>
+                <div style="font-size: 12px; color: #4b5563; margin-top: 4px;">{zone_desc}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ==========================================
 # 5. การสร้างแผนที่ด้วย Folium
@@ -244,11 +290,9 @@ routing_js = f"""
             
             waypoints.push(e.latlng);
             
-            // ปักหมุดชั่วคราว ณ จุดที่คลิก
             var marker = L.marker(e.latlng).addTo(map);
             tempMarkers.push(marker);
             
-            // เมื่อคลิกครบ 2 จุด ให้ดึงเส้นทางขับรถผ่านถนนจริง
             if (waypoints.length === 2) {{
                 routingControl = L.Routing.control({{
                     waypoints: waypoints,
@@ -258,7 +302,7 @@ routing_js = f"""
                     lineOptions: {{
                         styles: [{{color: '#3388ff', opacity: 0.8, weight: 6}}]
                     }},
-                    show: true, // แสดงป้ายบอกระยะทาง
+                    show: true,
                     addWaypoints: false,
                     routeWhileDragging: false,
                     createMarker: function() {{ return null; }}
@@ -279,6 +323,7 @@ fg_boundary = folium.FeatureGroup(name="🟥 ขอบเขต อ.สันท
 fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
 fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
 fg_factory = folium.FeatureGroup(name="📍 โรงงาน (ตามความเสี่ยง)")
+fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ (เมื่อคำนวณ)") # เลเยอร์ใหม่สำหรับวงกลม
 
 # นำ boundary_geo ที่ดึงข้อมูลสำเร็จมาวาดลง Feature Group
 if boundary_geo:
@@ -337,24 +382,55 @@ if not df_factories.empty:
         except Exception:
             continue
 
-# วาดเส้นทางที่คำนวณจากแถบ Sidebar (ถ้ามีการกดคำนวณไว้)
+# ==========================================
+# วาดเส้นทางและวงกลมรัศมีผลกระทบ (ถ้ามีการคำนวณ)
+# ==========================================
 if st.session_state.route_data:
     rd = st.session_state.route_data
+    
+    # วาดวงกลมรัศมีอาชีวเวชกรรมรอบๆ จุดเริ่มต้น
+    start_point = rd['start']
+    
+    # 1. โซนเขียว (5 km)
+    folium.Circle(
+        location=start_point, radius=5000, color='#059669', weight=1,
+        fill=True, fill_color='#059669', fill_opacity=0.05,
+        tooltip="🟢 โซนปลอดภัย (Cold Zone) รัศมี 5 กม."
+    ).add_to(fg_impact_zones)
+    
+    # 2. โซนเหลือง (2 km)
+    folium.Circle(
+        location=start_point, radius=2000, color='#d97706', weight=2,
+        fill=True, fill_color='#d97706', fill_opacity=0.1,
+        tooltip="🟡 โซนเฝ้าระวัง (Warm Zone) รัศมี 2 กม."
+    ).add_to(fg_impact_zones)
+    
+    # 3. โซนแดง (500 m)
+    folium.Circle(
+        location=start_point, radius=500, color='#dc2626', weight=3,
+        fill=True, fill_color='#dc2626', fill_opacity=0.2,
+        tooltip="🔴 โซนอันตรายสูงสุด (Hot Zone) รัศมี 500 ม."
+    ).add_to(fg_impact_zones)
+
+    # วาดเส้นทางขับรถ
     folium.PolyLine(
-        rd['coords'],
-        color="#3388ff",
-        weight=5,
-        opacity=0.8,
+        rd['coords'], color="#3388ff", weight=5, opacity=0.8,
         tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม."
     ).add_to(m)
-    folium.Marker(rd['start'], icon=folium.Icon(color='green', icon='play', prefix='fa'), tooltip="จุดเริ่มต้น").add_to(m)
-    folium.Marker(rd['end'], icon=folium.Icon(color='red', icon='stop', prefix='fa'), tooltip="จุดปลายทาง").add_to(m)
-    m.fit_bounds(rd['coords'])
+    
+    # ปักหมุดเริ่ม-จบ
+    folium.Marker(rd['start'], icon=folium.Icon(color='darkred', icon='fire', prefix='fa'), tooltip="จุดเกิดเหตุ (Start)").add_to(m)
+    folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
+    
+    # ปรับมุมมองให้ครอบคลุมรัศมีทั้งหมด
+    m.fit_bounds([[start_point[0]-0.045, start_point[1]-0.045], [start_point[0]+0.045, start_point[1]+0.045]])
 
+# แอดเลเยอร์ทั้งหมดลงแผนที่
 fg_boundary.add_to(m)
 fg_hospital.add_to(m)
 fg_gas.add_to(m)
 fg_factory.add_to(m)
+fg_impact_zones.add_to(m) # เลเยอร์รัศมี
 folium.LayerControl(collapsed=False).add_to(m)
 
 # ==========================================
