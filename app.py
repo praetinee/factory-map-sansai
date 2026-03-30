@@ -111,7 +111,6 @@ def calculate_straight_distance(lat1, lon1, lat2, lon2):
 # ==========================================
 # 3. จัดการ State สำหรับระบบคลิกแผนที่และการจดจำมุมมอง
 # ==========================================
-# สร้างหน่วยความจำเก็บตำแหน่งซูมปัจจุบัน เพื่อไม่ให้แผนที่รีเซ็ตเวลาคลิก
 if "map_center" not in st.session_state:
     st.session_state.map_center = [18.9135, 99.0279]
 if "map_zoom" not in st.session_state:
@@ -321,7 +320,8 @@ folium.LayerControl(collapsed=False).add_to(m)
 # ==========================================
 # 7. Render แผนที่และดักจับ Event การคลิกเมาส์
 # ==========================================
-map_data = st_folium(m, width="100%", height=700, returned_objects=["last_object_clicked", "last_clicked", "center", "zoom"])
+# แก้ไข returned_objects: ลบ center และ zoom ออก เพื่อป้องกันไม่ให้ Streamlit รีเฟรชแอปทุกครั้งที่เลื่อนหรือซูมแผนที่
+map_data = st_folium(m, width="100%", height=700, returned_objects=["last_object_clicked", "last_clicked"])
 
 # ดักจับพิกัดจากการคลิกของแผนที่
 clicked_point = None
@@ -330,15 +330,13 @@ if map_data:
         clicked_point = map_data["last_object_clicked"]
     elif map_data.get("last_clicked"):
         clicked_point = map_data["last_clicked"]
-        
-    # อัปเดตพิกัดและซูมล่าสุดเก็บไว้ในระบบความจำ เพื่อไม่ให้แผนที่เด้งกลับไปที่เดิม
-    if map_data.get("center"):
-        st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
-        st.session_state.map_zoom = map_data["zoom"]
 
 # ประมวลผลเมื่อเกิดการคลิกใหม่
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
+    
+    # อัปเดตจุดกึ่งกลางแผนที่เป็นพิกัดที่เพิ่งคลิก เพื่อป้องกันไม่ให้แผนที่เด้งกลับไปที่หน้าแรก
+    st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
     
     # ถ้าเปิดสวิตช์ "โหมดคลิกเพื่อนำทาง" ค่อยเอาพิกัดไปคำนวณ
     if enable_routing_click:
@@ -349,4 +347,3 @@ if clicked_point and clicked_point != st.session_state.last_processed_click:
             st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
         
         st.rerun() # รีเฟรชแผนที่เมื่ออยู่ในโหมดนำทาง
-    # ถ้าปิดสวิตช์ ก็แค่จดจำไว้ว่าถูกคลิก แต่จะไม่เข้าสู่กระบวนการคำนวณเส้นทาง (ทำให้เปิด Popup ได้ปกติ)
