@@ -3,6 +3,7 @@ import pandas as pd
 import folium
 from streamlit_folium import st_folium
 import requests
+import math  # นำเข้าโมดูล math สำหรับคำนวณระยะทาง
 
 # ==========================================
 # 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Sarabun
@@ -24,7 +25,7 @@ st.title("📍 แผนที่ความเสี่ยงโรงงา�
 st.markdown("แสดงพิกัดโรงงานตามระดับความเสี่ยง พร้อมเลเยอร์ขอบเขต ปั๊มน้ำมัน และโรงพยาบาล")
 
 # ==========================================
-# 2. ฟังก์ชันดึงข้อมูล (ใส่ @st.cache_data เพื่อให้โหลดเร็ว ไม่ต้องดึงใหม่ทุกครั้ง)
+# 2. ฟังก์ชันดึงข้อมูลและคำนวณ
 # ==========================================
 
 @st.cache_data(ttl=3600) # เก็บ Cache ไว้ 1 ชั่วโมง
@@ -81,6 +82,27 @@ def load_factories():
         st.sidebar.error("เข้าถึง Google Sheets ไม่ได้ (ตรวจสอบการแชร์)")
         return pd.DataFrame()
 
+# ฟังก์ชันคำนวณระยะทางด้วย Haversine Formula (ผลลัพธ์เป็นกิโลเมตร)
+def calculate_distance(lat1, lon1, lat2, lon2):
+    R = 6371.0 # รัศมีเฉลี่ยของโลก (กิโลเมตร)
+
+    # แปลงองศาเป็นเรเดียน
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+
+    # หาความแตกต่างของพิกัด
+    dlon = lon2_rad - lon1_rad
+    dlat = lat2_rad - lat1_rad
+
+    # คำนวณตามสูตร Haversine
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    distance = R * c
+    return distance
+
 # ==========================================
 # 3. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
@@ -94,7 +116,7 @@ if st.sidebar.button("🔄 รีโหลดข้อมูลโรงงา�
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📌 คำนิยามระดับความเสี่ยง")
 
-# ใช้กล่องข้อความสีของ Streamlit แบบ Native (สวยงามและไม่บั๊ก 100%)
+# ใช้กล่องข้อความสีของ Streamlit แบบ Native
 st.sidebar.error("""
 **🔴 เสี่ยงสูง (High Risk)**
 
@@ -112,6 +134,21 @@ st.sidebar.success("""
 
 กิจการขนาดเล็กทั่วไปที่ไม่ได้อยู่ในหมวดอันตราย และเครื่องจักร < 100 HP
 """)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📏 เครื่องมือคำนวณระยะทาง")
+with st.sidebar.expander("คำนวณระยะทางระหว่าง 2 จุด", expanded=False):
+    st.markdown("**จุดเริ่มต้น (พิกัด 1)**")
+    lat1 = st.number_input("ละติจูด 1", value=18.913500, format="%.6f")
+    lon1 = st.number_input("ลองจิจูด 1", value=99.027900, format="%.6f")
+    
+    st.markdown("**จุดปลายทาง (พิกัด 2)**")
+    lat2 = st.number_input("ละติจูด 2", value=18.921246, format="%.6f") # พิกัดตัวอย่าง รพ.สันทราย
+    lon2 = st.number_input("ลองจิจูด 2", value=98.994203, format="%.6f")
+    
+    if st.button("คำนวณระยะทาง", key="calc_dist_btn"):
+        dist = calculate_distance(lat1, lon1, lat2, lon2)
+        st.success(f"ระยะทางประมาณ: **{dist:.2f} กิโลเมตร**")
 
 # ==========================================
 # 4. การสร้างแผนที่ด้วย Folium
