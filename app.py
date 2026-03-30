@@ -109,14 +109,20 @@ def calculate_straight_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 # ==========================================
-# 3. จัดการ State สำหรับระบบคลิกแผนที่
+# 3. จัดการ State สำหรับระบบคลิกแผนที่และการจดจำมุมมอง
 # ==========================================
+# สร้างหน่วยความจำเก็บตำแหน่งซูมปัจจุบัน เพื่อไม่ให้แผนที่รีเซ็ตเวลาคลิก
+if "map_center" not in st.session_state:
+    st.session_state.map_center = [18.9135, 99.0279]
+if "map_zoom" not in st.session_state:
+    st.session_state.map_zoom = 11
+
 if "map_clicks" not in st.session_state:
-    st.session_state.map_clicks = [] # เก็บพิกัด [(lat, lon)] สูงสุด 2 จุด
+    st.session_state.map_clicks = [] 
 if "last_processed_click" not in st.session_state:
-    st.session_state.last_processed_click = None # ป้องกันการประมวลผลคลิกซ้ำซ้อน
+    st.session_state.last_processed_click = None 
 if "route_data" not in st.session_state:
-    st.session_state.route_data = None # เก็บผลลัพธ์เส้นทาง
+    st.session_state.route_data = None 
 
 # หากผู้ใช้คลิกครบ 2 จุด ให้คำนวณเส้นทางอัตโนมัติก่อนที่จะนำไปวาดบนแผนที่
 if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None:
@@ -159,11 +165,18 @@ st.sidebar.success("**🟢 เสี่ยงต่ำ (Low Risk)**\n\nกิจ
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
-st.sidebar.info("💡 **วิธีใช้งาน:** \n- **คลิก 1 ครั้ง:** เลือกจุดเกิดเหตุ\n- **คลิก 2 ครั้ง:** เลือกจุดปลายทาง เพื่อคำนวณ\n*(สามารถคลิกที่ปั๊ม/โรงงาน หรือถนนก็ได้)*")
+
+# เพิ่มสวิตช์ Toggle สำหรับเลือกโหมด
+enable_routing_click = st.sidebar.toggle("🖱️ เปิดโหมดคลิกเพื่อนำทาง", value=False)
+
+if enable_routing_click:
+    st.sidebar.info("💡 **สถานะ: เปิดโหมดนำทาง** \n- คลิก 1 ครั้ง: จุดเกิดเหตุ\n- คลิก 2 ครั้ง: จุดปลายทาง")
+else:
+    st.sidebar.info("💡 **สถานะ: โหมดดูข้อมูลปกติ** \n- คุณสามารถคลิกดูรายละเอียดโรงงานบนแผนที่ได้โดยที่พิกัดจะไม่ถูกนำไปคำนวณ")
 
 # แสดงพิกัดที่คลิก
-c1_txt = f"{st.session_state.map_clicks[0][0]:.4f}, {st.session_state.map_clicks[0][1]:.4f}" if len(st.session_state.map_clicks) > 0 else "รอกดคลิกบนแผนที่..."
-c2_txt = f"{st.session_state.map_clicks[1][0]:.4f}, {st.session_state.map_clicks[1][1]:.4f}" if len(st.session_state.map_clicks) > 1 else "รอกดคลิกบนแผนที่..."
+c1_txt = f"{st.session_state.map_clicks[0][0]:.4f}, {st.session_state.map_clicks[0][1]:.4f}" if len(st.session_state.map_clicks) > 0 else "รอคลิกแผนที่..."
+c2_txt = f"{st.session_state.map_clicks[1][0]:.4f}, {st.session_state.map_clicks[1][1]:.4f}" if len(st.session_state.map_clicks) > 1 else "รอคลิกแผนที่..."
 
 st.sidebar.markdown(f"🔥 **จุดเกิดเหตุ:** {c1_txt}")
 st.sidebar.markdown(f"🏁 **จุดปลายทาง:** {c2_txt}")
@@ -189,7 +202,6 @@ if st.session_state.route_data:
     st.sidebar.markdown("#### 🎯 รัศมีผลกระทบ")
     st.sidebar.caption(f"ระยะกระจัด (เส้นตรง): {s_dist:.2f} กม.")
     
-    # ประเมิน Zone ทางอาชีวเวชกรรม
     if s_dist <= 0.5:
         st.sidebar.error("**🔴 โซนอันตราย (Hot Zone) < 500ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
     elif s_dist <= 2.0:
@@ -210,7 +222,8 @@ hospitals = [
     {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
 ]
 
-m = folium.Map(location=[18.9135, 99.0279], zoom_start=11)
+# ดึงตำแหน่งล่าสุดของแผนที่มาจาก Session State
+m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
 
 folium.TileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google', name='Google Maps (ถนน)', subdomains=['mt0', 'mt1', 'mt2', 'mt3']).add_to(m)
 folium.TileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid (ดาวเทียม)', subdomains=['mt0', 'mt1', 'mt2', 'mt3'], show=False).add_to(m)
@@ -224,13 +237,11 @@ fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระ�
 if boundary_geo:
     folium.GeoJson(boundary_geo, style_function=lambda x: {'color': 'red', 'weight': 4, 'fillColor': 'red', 'fillOpacity': 0.04}).add_to(fg_boundary)
 
-# โรงพยาบาล
 for h in hospitals:
     icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
     popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>🏥 {h['name']}</b></div>"""
     folium.Marker([h['lat'], h['lon']], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=200)).add_to(fg_hospital)
 
-# ปั๊มน้ำมัน
 for el in gas_stations:
     lat = el.get('lat') or (el.get('center', {}).get('lat'))
     lon = el.get('lon') or (el.get('center', {}).get('lon'))
@@ -241,7 +252,6 @@ for el in gas_stations:
         popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>⛽ {name}</b><br><small>{brand}</small></div>"""
         folium.Marker([lat, lon], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=250)).add_to(fg_gas)
 
-# โรงงาน
 if not df_factories.empty:
     for idx, row in df_factories.iterrows():
         try:
@@ -281,25 +291,22 @@ if not df_factories.empty:
 # ==========================================
 # 6. วาดเส้นทางและวงกลมบนแผนที่ (Folium)
 # ==========================================
-# ปักหมุดจุดเริ่มต้น (แม้จะยังไม่มีจุดจบ)
 if len(st.session_state.map_clicks) >= 1:
     folium.Marker(st.session_state.map_clicks[0], icon=folium.Icon(color='darkred', icon='fire', prefix='fa'), tooltip="จุดเกิดเหตุ (Start)").add_to(m)
 
-# ปักหมุดจุดปลายทางและวาดเส้นทาง+วงกลม
 if len(st.session_state.map_clicks) == 2 and st.session_state.route_data:
     rd = st.session_state.route_data
     start_point = rd['start']
     
-    # วาดวงกลมรัศมีอาชีวเวชกรรมรอบๆ จุดเริ่มต้น (interactive=False ทำให้คลิกทะลุได้)
+    # วาดวงกลมรัศมีอาชีวเวชกรรม
     folium.Circle(location=start_point, radius=5000, color='#059669', weight=1, fill=True, fill_color='#059669', fill_opacity=0.05, interactive=False).add_to(fg_impact_zones)
     folium.Circle(location=start_point, radius=2000, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.1, interactive=False).add_to(fg_impact_zones)
     folium.Circle(location=start_point, radius=500, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.2, interactive=False).add_to(fg_impact_zones)
 
-    # วาดเส้นทางขับรถ
     folium.PolyLine(rd['coords'], color="#3388ff", weight=5, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
     folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
     
-    # ปรับมุมมองแผนที่ให้ครอบคลุม 5km โซน
+    # ซูมให้พอดีกับเส้นทางเฉพาะตอนที่มีการคำนวณเส้นทางเสร็จใหม่ๆ
     min_lat, max_lat = min(start_point[0], rd['end'][0]) - 0.045, max(start_point[0], rd['end'][0]) + 0.045
     min_lon, max_lon = min(start_point[1], rd['end'][1]) - 0.045, max(start_point[1], rd['end'][1]) + 0.045
     m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
@@ -314,28 +321,32 @@ folium.LayerControl(collapsed=False).add_to(m)
 # ==========================================
 # 7. Render แผนที่และดักจับ Event การคลิกเมาส์
 # ==========================================
-map_data = st_folium(m, width="100%", height=700)
+map_data = st_folium(m, width="100%", height=700, returned_objects=["last_object_clicked", "last_clicked", "center", "zoom"])
 
 # ดักจับพิกัดจากการคลิกของแผนที่
 clicked_point = None
 if map_data:
-    # ตรวจสอบว่าผู้ใช้คลิกโดน Marker หรือคลิกบนพื้นถนนธรรมดา
     if map_data.get("last_object_clicked"):
         clicked_point = map_data["last_object_clicked"]
     elif map_data.get("last_clicked"):
         clicked_point = map_data["last_clicked"]
+        
+    # อัปเดตพิกัดและซูมล่าสุดเก็บไว้ในระบบความจำ เพื่อไม่ให้แผนที่เด้งกลับไปที่เดิม
+    if map_data.get("center"):
+        st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
+        st.session_state.map_zoom = map_data["zoom"]
 
-# หากมีการคลิกจุดใหม่ที่ยังไม่เคยถูกประมวลผล
+# ประมวลผลเมื่อเกิดการคลิกใหม่
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
     
-    # หากคลิกครบ 2 จุดไปแล้ว การคลิกครั้งที่ 3 จะเป็นการ "ล้างข้อมูล" และนับเป็นจุดเริ่มต้นใหม่
-    if len(st.session_state.map_clicks) >= 2:
-        st.session_state.map_clicks = [(clicked_point['lat'], clicked_point['lng'])]
-        st.session_state.route_data = None
-    else:
-        # หากเพิ่งคลิกครั้งแรกหรือครั้งที่สอง ก็เพิ่มลงไปใน List
-        st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
-    
-    # สั่งให้แอปรีเฟรชตัวเอง เพื่อเอาพิกัดไปคำนวณและวาดเส้นทาง
-    st.rerun()
+    # ถ้าเปิดสวิตช์ "โหมดคลิกเพื่อนำทาง" ค่อยเอาพิกัดไปคำนวณ
+    if enable_routing_click:
+        if len(st.session_state.map_clicks) >= 2:
+            st.session_state.map_clicks = [(clicked_point['lat'], clicked_point['lng'])]
+            st.session_state.route_data = None
+        else:
+            st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
+        
+        st.rerun() # รีเฟรชแผนที่เมื่ออยู่ในโหมดนำทาง
+    # ถ้าปิดสวิตช์ ก็แค่จดจำไว้ว่าถูกคลิก แต่จะไม่เข้าสู่กระบวนการคำนวณเส้นทาง (ทำให้เปิด Popup ได้ปกติ)
