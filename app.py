@@ -40,13 +40,18 @@ st.markdown("แสดงพิกัดโรงงานตามระดั�
 def load_boundary():
     url = 'https://nominatim.openstreetmap.org/search?q=อำเภอสันทราย+จังหวัดเชียงใหม่&format=geojson&polygon_geojson=1&limit=1'
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        # แก้ไข User-Agent ให้เจาะจง เพื่อป้องกัน OpenStreetMap (Nominatim) บล็อกการเชื่อมต่อ
+        headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (Streamlit)'}
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 200:
             data = r.json()
             features = [f for f in data.get('features', []) if f.get('geometry', {}).get('type') in ['Polygon', 'MultiPolygon']]
             if features:
                 return features[0]
+            else:
+                st.sidebar.warning("⚠️ ไม่พบข้อมูลรูปแปลงขอบเขต อ.สันทราย จากเซิร์ฟเวอร์")
+        else:
+             st.sidebar.error(f"โหลดขอบเขตไม่สำเร็จ (Status: {r.status_code})")
     except Exception as e:
         st.sidebar.error(f"โหลดขอบเขตไม่สำเร็จ: {e}")
     return None
@@ -60,7 +65,8 @@ def load_gas_stations():
     out center;"""
     url = 'https://overpass-api.de/api/interpreter'
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        # ใช้ User-Agent ที่เจาะจงเช่นกัน
+        headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (Streamlit)'}
         r = requests.post(url, data={'data': query}, headers=headers, timeout=30)
         if r.status_code == 200:
             return r.json().get('elements', [])
@@ -274,6 +280,7 @@ fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
 fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
 fg_factory = folium.FeatureGroup(name="📍 โรงงาน (ตามความเสี่ยง)")
 
+# นำ boundary_geo ที่ดึงข้อมูลสำเร็จมาวาดลง Feature Group
 if boundary_geo:
     folium.GeoJson(boundary_geo, style_function=lambda x: {'color': 'red', 'weight': 4, 'fillColor': 'red', 'fillOpacity': 0.04}).add_to(fg_boundary)
 
