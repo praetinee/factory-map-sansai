@@ -391,6 +391,9 @@ map_data = st_folium(
     returned_objects=["last_object_clicked", "last_clicked"]
 )
 
+# เพิ่มการประกาศตัวแปรเริ่มต้น เพื่อป้องกัน NameError 
+clicked_point = None
+
 if map_data:
     if map_data.get("last_object_clicked"):
         clicked_point = map_data["last_object_clicked"]
