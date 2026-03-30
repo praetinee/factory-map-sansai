@@ -72,19 +72,27 @@ def load_boundary():
 
 @st.cache_data(ttl=3600)
 def load_gas_stations():
+    # ปรับปรุง Query Overpass API ให้ค้นหาแม่นยำและถูกต้องยิ่งขึ้น
     query = """[out:json][timeout:30];
-    rel["name"~"สันทราย"]["admin_level"="6"];
-    map_to_area -> .searchArea;
-    (node["amenity"="fuel"](area.searchArea); way["amenity"="fuel"](area.searchArea););
+    area["name"~"สันทราย"]["admin_level"="6"]->.searchArea;
+    (
+      node["amenity"="fuel"](area.searchArea);
+      way["amenity"="fuel"](area.searchArea);
+      relation["amenity"="fuel"](area.searchArea);
+    );
     out center;"""
     url = 'https://overpass-api.de/api/interpreter'
     try:
-        headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (Streamlit)'}
-        r = requests.post(url, data={'data': query}, headers=headers, timeout=30)
+        headers = {'User-Agent': 'FactoryRiskMapApp/1.0'}
+        # ส่ง data เป็น utf-8 string ตรงๆ แทน เพื่อป้องกันปัญหาการแปลงฟอร์แมตผิดพลาด
+        r = requests.post(url, data=query.encode('utf-8'), headers=headers, timeout=30)
         if r.status_code == 200:
-            return r.json().get('elements', [])
+            data = r.json()
+            return data.get('elements', [])
+        else:
+            st.sidebar.error(f"⚠️ โหลดข้อมูลปั๊มน้ำมันไม่สำเร็จ (API Status: {r.status_code})")
     except Exception as e:
-        pass
+        st.sidebar.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดปั๊มน้ำมัน: {e}")
     return []
 
 @st.cache_data(ttl=300)
@@ -205,9 +213,13 @@ if not df_factories.empty:
 # ==========================================
 st.sidebar.header("⚙️ การจัดการข้อมูล")
 
-if st.sidebar.button("🔄 รีโหลดข้อมูลโรงงานล่าสุด", use_container_width=True):
+# เพิ่มประสิทธิภาพปุ่มรีโหลด ให้ล้างความจำทุกอย่างแล้วโหลดใหม่ทั้งหมด
+if st.sidebar.button("🔄 รีโหลดข้อมูลใหม่ทั้งหมด", use_container_width=True):
     load_factories.clear()
-    st.sidebar.success("อัปเดตข้อมูลจากชีตแล้ว!")
+    load_gas_stations.clear()
+    load_boundary.clear()
+    st.sidebar.success("ล้างความจำและอัปเดตข้อมูลใหม่ทั้งหมดแล้ว!")
+    st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📌 คำนิยามระดับความเสี่ยง")
