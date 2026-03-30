@@ -1,23 +1,30 @@
 import streamlit as st
 import pandas as pd
 import folium
-from folium.plugins import MeasureControl
+from folium import Element # ใช้สำหรับแทรกสคริปต์ระบบนำทาง
 from streamlit_folium import st_folium
 import requests
+import math
 
 # ==========================================
 # 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Google Sans
 # ==========================================
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
-# แทรก CSS เพื่อโหลดและตั้งค่าฟอนต์ Google Sans และ Noto Sans Thai ให้กับทั้งแอป
+# แทรก CSS เพื่อโหลดฟอนต์ โดยปรับให้ปลอดภัย ไม่ไปกระทบกับไอคอน (SVG) ของ Streamlit
 st.markdown("""
     <style>
         @import url('https://fonts.cdnfonts.com/css/google-sans');
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
         
-        * {
-            font-family: 'Google Sans', 'Noto Sans Thai', sans-serif !important;
+        /* กำหนดฟอนต์ให้เฉพาะแท็กข้อความทั่วไป */
+        html, body, p, h1, h2, h3, h4, h5, h6, span, label, div {
+            font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;
+        }
+        
+        /* ป้องกันไม่ให้ฟอนต์ไปทับไอคอนลูกศร, เมนูย่อขยาย หรือกราฟิก SVG ต่างๆ */
+        svg, svg *, i, .material-icons, [class*="icon"] {
+            font-family: inherit !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -69,9 +76,8 @@ def load_factories():
     except Exception as e:
         return pd.DataFrame()
 
-# ฟังก์ชันดึงข้อมูลเส้นทางขับรถจริง (OSRM API)
+# ฟังก์ชันดึงข้อมูลเส้นทางขับรถจริง (OSRM API) - สำหรับ Sidebar
 def get_driving_route(lat1, lon1, lat2, lon2):
-    # OSRM ต้องการพิกัดแบบ lon,lat
     url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
     try:
         r = requests.get(url, timeout=10)
@@ -79,10 +85,9 @@ def get_driving_route(lat1, lon1, lat2, lon2):
             data = r.json()
             if data['code'] == 'Ok':
                 route = data['routes'][0]
-                distance_km = route['distance'] / 1000.0  # ระยะทางเป็นกิโลเมตร
-                duration_min = route['duration'] / 60.0   # เวลาเป็นนาที
+                distance_km = route['distance'] / 1000.0  
+                duration_min = route['duration'] / 60.0   
                 geometry = route['geometry']['coordinates']
-                # สลับพิกัดกลับมาเป็น lat, lon สำหรับใช้งานใน Folium
                 route_coords = [[coord[1], coord[0]] for coord in geometry]
                 return distance_km, duration_min, route_coords
     except Exception as e:
@@ -146,12 +151,12 @@ st.sidebar.success("**🟢 เสี่ยงต่ำ (Low Risk)**\n\nกิจ
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🚗 ระบบนำทางและระยะทาง")
+st.sidebar.info("💡 **ทิปส์:** คุณสามารถคลิกจุดใดๆ บนแผนที่ 2 จุด เพื่อสร้างเส้นทางขับรถอัตโนมัติได้เลย!")
 
-# จัดการ State สำหรับเก็บเส้นทาง
 if "route_data" not in st.session_state:
     st.session_state.route_data = None
 
-with st.sidebar.expander("คำนวณเส้นทางขับรถ", expanded=True):
+with st.sidebar.expander("คำนวณเส้นทางจากรายชื่อสถานที่", expanded=False):
     if locations_dict:
         location_names = list(locations_dict.keys())
         
@@ -181,11 +186,10 @@ with st.sidebar.expander("คำนวณเส้นทางขับรถ", 
                     st.error("ไม่สามารถคำนวณเส้นทางได้ กรุณาลองใหม่อีกครั้ง")
                     
         with col2:
-            if st.button("ล้างเส้นทาง", use_container_width=True):
+            if st.button("ล้างข้อมูล", use_container_width=True):
                 st.session_state.route_data = None
                 st.rerun()
 
-    # แสดงผลการคำนวณ
     if st.session_state.route_data:
         rd = st.session_state.route_data
         st.success(f"""
@@ -200,7 +204,67 @@ with st.sidebar.expander("คำนวณเส้นทางขับรถ", 
 # ==========================================
 m = folium.Map(location=[18.9135, 99.0279], zoom_start=11)
 
-m.add_child(MeasureControl(position='topleft', primary_length_unit='kilometers', secondary_length_unit='meters', primary_area_unit='sqmeters'))
+# แทรกระบบ Leaflet Routing Machine เพื่อให้คลิกแผนที่แล้วนำทางตามถนนได้ทันที
+css_url = "https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+js_url = "https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"
+m.get_root().header.add_child(Element(f'<link rel="stylesheet" href="{css_url}" />'))
+m.get_root().html.add_child(Element(f'<script src="{js_url}"></script>'))
+
+map_name = m.get_name()
+routing_js = f"""
+<script>
+    function initRouting() {{
+        // รอให้ไลบรารีนำทางโหลดเสร็จ
+        if (typeof L === 'undefined' || typeof L.Routing === 'undefined') {{
+            setTimeout(initRouting, 100);
+            return;
+        }}
+        var map = {map_name};
+        var routingControl = null;
+        var waypoints = [];
+        var tempMarkers = [];
+        
+        map.on('click', function(e) {{
+            // ถ้ามีเส้นทางเดิมอยู่แล้ว (คลิกครบ 2 จุดไปแล้ว) ให้เคลียร์ค่าเริ่มใหม่
+            if (waypoints.length >= 2) {{
+                waypoints = [];
+                tempMarkers.forEach(function(m) {{ map.removeLayer(m); }});
+                tempMarkers = [];
+                if (routingControl) {{
+                    map.removeControl(routingControl);
+                    routingControl = null;
+                }}
+            }}
+            
+            waypoints.push(e.latlng);
+            
+            // ปักหมุดชั่วคราว ณ จุดที่คลิก
+            var marker = L.marker(e.latlng).addTo(map);
+            tempMarkers.push(marker);
+            
+            // เมื่อคลิกครบ 2 จุด ให้ดึงเส้นทางขับรถผ่านถนนจริง
+            if (waypoints.length === 2) {{
+                routingControl = L.Routing.control({{
+                    waypoints: waypoints,
+                    router: L.Routing.osrmv1({{
+                        serviceUrl: 'https://router.project-osrm.org/route/v1'
+                    }}),
+                    lineOptions: {{
+                        styles: [{{color: '#3388ff', opacity: 0.8, weight: 6}}]
+                    }},
+                    show: true, // แสดงป้ายบอกระยะทาง
+                    addWaypoints: false,
+                    routeWhileDragging: false,
+                    createMarker: function() {{ return null; }}
+                }}).addTo(map);
+            }}
+        }});
+    }}
+    initRouting();
+</script>
+"""
+m.get_root().html.add_child(Element(routing_js))
+
 
 folium.TileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google', name='Google Maps (ถนน)', subdomains=['mt0', 'mt1', 'mt2', 'mt3']).add_to(m)
 folium.TileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid (ดาวเทียม)', subdomains=['mt0', 'mt1', 'mt2', 'mt3'], show=False).add_to(m)
@@ -266,23 +330,18 @@ if not df_factories.empty:
         except Exception:
             continue
 
-# วาดเส้นทางบนแผนที่ (ถ้ามีการคำนวณไว้)
+# วาดเส้นทางที่คำนวณจากแถบ Sidebar (ถ้ามีการกดคำนวณไว้)
 if st.session_state.route_data:
     rd = st.session_state.route_data
-    # เพิ่มเส้นทางนำทาง
     folium.PolyLine(
         rd['coords'],
-        color="#3388ff", # สีฟ้าสดใส
+        color="#3388ff",
         weight=5,
         opacity=0.8,
         tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม."
     ).add_to(m)
-    
-    # เพิ่มหมุดแบบพิเศษ ระบุจุดเริ่มและจุดจบชัดเจน
     folium.Marker(rd['start'], icon=folium.Icon(color='green', icon='play', prefix='fa'), tooltip="จุดเริ่มต้น").add_to(m)
     folium.Marker(rd['end'], icon=folium.Icon(color='red', icon='stop', prefix='fa'), tooltip="จุดปลายทาง").add_to(m)
-    
-    # ปรับมุมมองแผนที่ให้ซูมพอดีกับเส้นทางอัตโนมัติ
     m.fit_bounds(rd['coords'])
 
 fg_boundary.add_to(m)
