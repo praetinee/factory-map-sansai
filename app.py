@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import folium
-from folium import Element # ใช้สำหรับแทรกสคริปต์ระบบนำทาง
 from streamlit_folium import st_folium
 import requests
 import math
@@ -40,7 +39,6 @@ st.markdown("แสดงพิกัดโรงงานตามระดั�
 def load_boundary():
     url = 'https://nominatim.openstreetmap.org/search?q=อำเภอสันทราย+จังหวัดเชียงใหม่&format=geojson&polygon_geojson=1&limit=1'
     try:
-        # แก้ไข User-Agent ให้เจาะจง เพื่อป้องกัน OpenStreetMap (Nominatim) บล็อกการเชื่อมต่อ
         headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (Streamlit)'}
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 200:
@@ -65,7 +63,6 @@ def load_gas_stations():
     out center;"""
     url = 'https://overpass-api.de/api/interpreter'
     try:
-        # ใช้ User-Agent ที่เจาะจงเช่นกัน
         headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (Streamlit)'}
         r = requests.post(url, data={'data': query}, headers=headers, timeout=30)
         if r.status_code == 200:
@@ -82,7 +79,7 @@ def load_factories():
     except Exception as e:
         return pd.DataFrame()
 
-# ฟังก์ชันดึงข้อมูลเส้นทางขับรถจริง (OSRM API) - สำหรับ Sidebar
+# ฟังก์ชันดึงข้อมูลเส้นทางขับรถจริง (OSRM API)
 def get_driving_route(lat1, lon1, lat2, lon2):
     url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
     try:
@@ -112,43 +109,37 @@ def calculate_straight_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 # ==========================================
-# 3. เตรียมข้อมูลพิกัดสถานที่ทั้งหมดล่วงหน้า
+# 3. จัดการ State สำหรับระบบคลิกแผนที่
 # ==========================================
-boundary_geo = load_boundary()
-gas_stations = load_gas_stations()
-df_factories = load_factories()
+if "map_clicks" not in st.session_state:
+    st.session_state.map_clicks = [] # เก็บพิกัด [(lat, lon)] สูงสุด 2 จุด
+if "last_processed_click" not in st.session_state:
+    st.session_state.last_processed_click = None # ป้องกันการประมวลผลคลิกซ้ำซ้อน
+if "route_data" not in st.session_state:
+    st.session_state.route_data = None # เก็บผลลัพธ์เส้นทาง
 
-locations_dict = {}
-
-hospitals = [
-    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
-    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
-]
-for h in hospitals:
-    locations_dict[f"🏥 {h['name']}"] = (h['lat'], h['lon'])
-
-for el in gas_stations:
-    lat = el.get('lat') or (el.get('center', {}).get('lat'))
-    lon = el.get('lon') or (el.get('center', {}).get('lon'))
-    if lat and lon:
-        name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
-        brand = el.get('tags', {}).get('brand', '')
-        display_name = f"⛽ {name}" if name != 'ปั๊มน้ำมันทั่วไป' else f"⛽ {brand} (ปั๊มน้ำมัน)"
-        locations_dict[display_name] = (lat, lon)
-
-if not df_factories.empty:
-    for idx, row in df_factories.iterrows():
-        try:
-            if len(row) >= 8 and pd.notna(row.iloc[7]):
-                coords_str = str(row.iloc[7]).strip()
-                if ',' in coords_str:
-                    lat_str, lon_str = coords_str.replace('"', '').split(',')
-                    lat, lon = float(lat_str.strip()), float(lon_str.strip())
-                    raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
-                    full_name = raw_name.split('\n')[0].replace('"', '')
-                    locations_dict[f"🏭 {full_name}"] = (lat, lon)
-        except Exception:
-            pass
+# หากผู้ใช้คลิกครบ 2 จุด ให้คำนวณเส้นทางอัตโนมัติก่อนที่จะนำไปวาดบนแผนที่
+if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None:
+    with st.spinner('กำลังประมวลผลเส้นทาง...'):
+        lat1, lon1 = st.session_state.map_clicks[0]
+        lat2, lon2 = st.session_state.map_clicks[1]
+        
+        dist_km, dur_min, coords = get_driving_route(lat1, lon1, lat2, lon2)
+        straight_dist = calculate_straight_distance(lat1, lon1, lat2, lon2)
+        
+        if dist_km is not None:
+            st.session_state.route_data = {
+                'dist': dist_km,
+                'dur': dur_min,
+                'coords': coords,
+                'start': (lat1, lon1),
+                'end': (lat2, lon2),
+                'straight_dist': straight_dist
+            }
+        else:
+            st.sidebar.error("❌ ไม่สามารถคำนวณเส้นทางได้ (จุดที่คลิกอาจอยู่ห่างไกลถนนเกินไป)")
+            # ลบจุดที่ 2 ออกเพื่อให้คลิกใหม่ได้
+            st.session_state.map_clicks.pop()
 
 # ==========================================
 # 4. ส่วนแถบเมนูด้านข้าง (Sidebar)
@@ -167,164 +158,59 @@ st.sidebar.warning("**🟡 เสี่ยงปานกลาง (Medium)**\n\
 st.sidebar.success("**🟢 เสี่ยงต่ำ (Low Risk)**\n\nกิจการขนาดเล็กทั่วไปที่ไม่ได้อยู่ในหมวดอันตราย และเครื่องจักร < 100 HP")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🚗 ระบบนำทางและประเมินอุบัติภัย")
-st.sidebar.info("💡 **ทิปส์:** เลือกระบุจุดเริ่มต้นเพื่อดูวงแหวนประเมินรัศมีผลกระทบทางอาชีวเวชกรรม (ER Zones) บนแผนที่")
+st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
+st.sidebar.info("💡 **วิธีใช้งาน:** \n- **คลิก 1 ครั้ง:** เลือกจุดเกิดเหตุ\n- **คลิก 2 ครั้ง:** เลือกจุดปลายทาง เพื่อคำนวณ\n*(สามารถคลิกที่ปั๊ม/โรงงาน หรือถนนก็ได้)*")
 
-if "route_data" not in st.session_state:
+# แสดงพิกัดที่คลิก
+c1_txt = f"{st.session_state.map_clicks[0][0]:.4f}, {st.session_state.map_clicks[0][1]:.4f}" if len(st.session_state.map_clicks) > 0 else "รอกดคลิกบนแผนที่..."
+c2_txt = f"{st.session_state.map_clicks[1][0]:.4f}, {st.session_state.map_clicks[1][1]:.4f}" if len(st.session_state.map_clicks) > 1 else "รอกดคลิกบนแผนที่..."
+
+st.sidebar.markdown(f"🔥 **จุดเกิดเหตุ:** {c1_txt}")
+st.sidebar.markdown(f"🏁 **จุดปลายทาง:** {c2_txt}")
+
+if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
+    st.session_state.map_clicks = []
     st.session_state.route_data = None
+    st.session_state.last_processed_click = None
+    st.rerun()
 
-with st.sidebar.expander("คำนวณเส้นทางและประเมินผลกระทบ", expanded=True):
-    if locations_dict:
-        location_names = list(locations_dict.keys())
-        
-        point1 = st.selectbox("จุดเริ่มต้น (เช่น จุดเกิดเหตุ)", options=location_names, index=0)
-        point2 = st.selectbox("จุดปลายทาง (เช่น ศูนย์อพยพ/รพ.)", options=location_names, index=1 if len(location_names) > 1 else 0)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("คำนวณและประเมิน", type="primary", use_container_width=True):
-                lat1, lon1 = locations_dict[point1]
-                lat2, lon2 = locations_dict[point2]
-                
-                with st.spinner('กำลังคำนวณ...'):
-                    # คำนวณเส้นทางขับรถ
-                    dist_km, dur_min, coords = get_driving_route(lat1, lon1, lat2, lon2)
-                    # คำนวณระยะกระจัด (รัศมีตรง)
-                    straight_dist = calculate_straight_distance(lat1, lon1, lat2, lon2)
-                
-                if dist_km is not None:
-                    st.session_state.route_data = {
-                        'name1': point1[2:].strip(),
-                        'name2': point2[2:].strip(),
-                        'dist': dist_km,
-                        'dur': dur_min,
-                        'coords': coords,
-                        'start': (lat1, lon1),
-                        'end': (lat2, lon2),
-                        'straight_dist': straight_dist
-                    }
-                else:
-                    st.error("ไม่สามารถคำนวณเส้นทางได้ กรุณาลองใหม่อีกครั้ง")
-                    
-        with col2:
-            if st.button("🗑️ ล้างเส้นทาง", use_container_width=True):
-                st.session_state.route_data = None
-                st.rerun()
+# แสดงผลการประเมิน (เมื่อได้เส้นทางแล้ว)
+if st.session_state.route_data:
+    rd = st.session_state.route_data
+    s_dist = rd['straight_dist']
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("#### 🚗 สรุปการเดินทาง")
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("ระยะทางขับรถ", f"{rd['dist']:.2f} กม.")
+    col2.metric("เวลาเดินทาง", f"~ {rd['dur']:.0f} นาที")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("#### 🎯 รัศมีผลกระทบ")
+    st.sidebar.caption(f"ระยะกระจัด (เส้นตรง): {s_dist:.2f} กม.")
+    
+    # ประเมิน Zone ทางอาชีวเวชกรรม
+    if s_dist <= 0.5:
+        st.sidebar.error("**🔴 โซนอันตราย (Hot Zone) < 500ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
+    elif s_dist <= 2.0:
+        st.sidebar.warning("**🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม.**\n\nอาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)")
+    else:
+        st.sidebar.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
 
-    # แสดงผลการคำนวณและประเมินโซน (ใช้ Native Components ของ Streamlit เพื่อป้องกันบั๊ก HTML)
-    if st.session_state.route_data:
-        rd = st.session_state.route_data
-        s_dist = rd['straight_dist']
-        
-        st.markdown("---")
-        st.markdown("#### 🚗 สรุปการเดินทาง")
-        st.markdown(f"📍 **จาก:** {rd['name1']}")
-        st.markdown(f"🎯 **ถึง:** {rd['name2']}")
-        
-        # ใช้ Metric ในการแสดงตัวเลขให้สวยงาม
-        col1, col2 = st.columns(2)
-        col1.metric("ระยะทางขับรถ", f"{rd['dist']:.2f} กม.")
-        col2.metric("เวลาเดินทาง", f"~ {rd['dur']:.0f} นาที")
-        
-        st.markdown("---")
-        st.markdown("#### 🎯 ประเมินรัศมีผลกระทบ")
-        st.caption(f"ระยะกระจัด (เส้นตรง) จากจุดเกิดเหตุ: {s_dist:.2f} กม.")
-        
-        # ประเมิน Zone ทางอาชีวเวชกรรม (อ้างอิง ERG พื้นฐาน)
-        if s_dist <= 0.5:
-            st.error("**🔴 โซนอันตราย (Hot Zone) < 500ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
-        elif s_dist <= 2.0:
-            st.warning("**🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม.**\n\nอาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)")
-        else:
-            st.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
 
 # ==========================================
-# 5. การสร้างแผนที่ด้วย Folium
+# 5. โหลดข้อมูลแผนที่หลัก
 # ==========================================
+boundary_geo = load_boundary()
+gas_stations = load_gas_stations()
+df_factories = load_factories()
+
+hospitals = [
+    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
+    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
+]
+
 m = folium.Map(location=[18.9135, 99.0279], zoom_start=11)
-
-# แทรกระบบ Leaflet Routing Machine เพื่อให้คลิกแผนที่แล้วนำทางตามถนนได้ทันที
-css_url = "https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
-js_url = "https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"
-m.get_root().header.add_child(Element(f'<link rel="stylesheet" href="{css_url}" />'))
-m.get_root().html.add_child(Element(f'<script src="{js_url}"></script>'))
-
-map_name = m.get_name()
-routing_js = f"""
-<script>
-    function initRouting() {{
-        // รอให้ไลบรารีนำทางโหลดเสร็จ
-        if (typeof L === 'undefined' || typeof L.Routing === 'undefined') {{
-            setTimeout(initRouting, 100);
-            return;
-        }}
-        var map = {map_name};
-        var routingControl = null;
-        var waypoints = [];
-        var tempMarkers = [];
-        
-        // --- เพิ่มปุ่มล้างเส้นทางบนแผนที่ ---
-        var ClearButton = L.Control.extend({{
-            options: {{ position: 'topleft' }},
-            onAdd: function (map) {{
-                var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-                container.innerHTML = '<a href="#" title="ล้างเส้นทางบนแผนที่" style="width: auto; height: auto; padding: 5px 10px; background-color: white; color: #dc2626; font-weight: bold; text-decoration: none; display: flex; align-items: center; gap: 5px;">🗑️ ล้างเส้นทาง (คลิก 2 จุด)</a>';
-                container.onclick = function(e) {{
-                    L.DomEvent.stopPropagation(e);
-                    e.preventDefault();
-                    waypoints = [];
-                    tempMarkers.forEach(function(m) {{ map.removeLayer(m); }});
-                    tempMarkers = [];
-                    if (routingControl) {{
-                        map.removeControl(routingControl);
-                        routingControl = null;
-                    }}
-                }}
-                return container;
-            }}
-        }});
-        map.addControl(new ClearButton());
-        // ------------------------------------
-        
-        map.on('click', function(e) {{
-            // ถ้ามีเส้นทางเดิมอยู่แล้ว (คลิกครบ 2 จุดไปแล้ว) ให้เคลียร์ค่าเริ่มใหม่
-            if (waypoints.length >= 2) {{
-                waypoints = [];
-                tempMarkers.forEach(function(m) {{ map.removeLayer(m); }});
-                tempMarkers = [];
-                if (routingControl) {{
-                    map.removeControl(routingControl);
-                    routingControl = null;
-                }}
-            }}
-            
-            waypoints.push(e.latlng);
-            
-            var marker = L.marker(e.latlng).addTo(map);
-            tempMarkers.push(marker);
-            
-            if (waypoints.length === 2) {{
-                routingControl = L.Routing.control({{
-                    waypoints: waypoints,
-                    router: L.Routing.osrmv1({{
-                        serviceUrl: 'https://router.project-osrm.org/route/v1'
-                    }}),
-                    lineOptions: {{
-                        styles: [{{color: '#3388ff', opacity: 0.8, weight: 6}}]
-                    }},
-                    show: true,
-                    addWaypoints: false,
-                    routeWhileDragging: false,
-                    createMarker: function() {{ return null; }}
-                }}).addTo(map);
-            }}
-        }});
-    }}
-    initRouting();
-</script>
-"""
-m.get_root().html.add_child(Element(routing_js))
-
 
 folium.TileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google', name='Google Maps (ถนน)', subdomains=['mt0', 'mt1', 'mt2', 'mt3']).add_to(m)
 folium.TileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid (ดาวเทียม)', subdomains=['mt0', 'mt1', 'mt2', 'mt3'], show=False).add_to(m)
@@ -333,17 +219,18 @@ fg_boundary = folium.FeatureGroup(name="🟥 ขอบเขต อ.สันท
 fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
 fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
 fg_factory = folium.FeatureGroup(name="📍 โรงงาน (ตามความเสี่ยง)")
-fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ (เมื่อคำนวณ)") # เลเยอร์ใหม่สำหรับวงกลม
+fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ (คำนวณอัตโนมัติ)")
 
-# นำ boundary_geo ที่ดึงข้อมูลสำเร็จมาวาดลง Feature Group
 if boundary_geo:
     folium.GeoJson(boundary_geo, style_function=lambda x: {'color': 'red', 'weight': 4, 'fillColor': 'red', 'fillOpacity': 0.04}).add_to(fg_boundary)
 
+# โรงพยาบาล
 for h in hospitals:
     icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
     popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>🏥 {h['name']}</b></div>"""
     folium.Marker([h['lat'], h['lon']], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=200)).add_to(fg_hospital)
 
+# ปั๊มน้ำมัน
 for el in gas_stations:
     lat = el.get('lat') or (el.get('center', {}).get('lat'))
     lon = el.get('lon') or (el.get('center', {}).get('lon'))
@@ -354,7 +241,7 @@ for el in gas_stations:
         popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>⛽ {name}</b><br><small>{brand}</small></div>"""
         folium.Marker([lat, lon], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=250)).add_to(fg_gas)
 
-factory_count = 0
+# โรงงาน
 if not df_factories.empty:
     for idx, row in df_factories.iterrows():
         try:
@@ -388,62 +275,67 @@ if not df_factories.empty:
                         </div>
                     """
                     folium.CircleMarker(location=[lat, lon], radius=8, color='white', weight=2, fill_color=fill_color, fill_opacity=0.95, popup=folium.Popup(popup_html, max_width=320)).add_to(fg_factory)
-                    factory_count += 1
         except Exception:
             continue
 
 # ==========================================
-# วาดเส้นทางและวงกลมรัศมีผลกระทบ (ถ้ามีการคำนวณ)
+# 6. วาดเส้นทางและวงกลมบนแผนที่ (Folium)
 # ==========================================
-if st.session_state.route_data:
+# ปักหมุดจุดเริ่มต้น (แม้จะยังไม่มีจุดจบ)
+if len(st.session_state.map_clicks) >= 1:
+    folium.Marker(st.session_state.map_clicks[0], icon=folium.Icon(color='darkred', icon='fire', prefix='fa'), tooltip="จุดเกิดเหตุ (Start)").add_to(m)
+
+# ปักหมุดจุดปลายทางและวาดเส้นทาง+วงกลม
+if len(st.session_state.map_clicks) == 2 and st.session_state.route_data:
     rd = st.session_state.route_data
-    
-    # วาดวงกลมรัศมีอาชีวเวชกรรมรอบๆ จุดเริ่มต้น
     start_point = rd['start']
     
-    # 1. โซนเขียว (5 km)
-    folium.Circle(
-        location=start_point, radius=5000, color='#059669', weight=1,
-        fill=True, fill_color='#059669', fill_opacity=0.05,
-        interactive=False # ปิดกั้นการดักจับเมาส์ ทำให้คลิกทะลุได้
-    ).add_to(fg_impact_zones)
-    
-    # 2. โซนเหลือง (2 km)
-    folium.Circle(
-        location=start_point, radius=2000, color='#d97706', weight=2,
-        fill=True, fill_color='#d97706', fill_opacity=0.1,
-        interactive=False
-    ).add_to(fg_impact_zones)
-    
-    # 3. โซนแดง (500 m)
-    folium.Circle(
-        location=start_point, radius=500, color='#dc2626', weight=3,
-        fill=True, fill_color='#dc2626', fill_opacity=0.2,
-        interactive=False
-    ).add_to(fg_impact_zones)
+    # วาดวงกลมรัศมีอาชีวเวชกรรมรอบๆ จุดเริ่มต้น (interactive=False ทำให้คลิกทะลุได้)
+    folium.Circle(location=start_point, radius=5000, color='#059669', weight=1, fill=True, fill_color='#059669', fill_opacity=0.05, interactive=False).add_to(fg_impact_zones)
+    folium.Circle(location=start_point, radius=2000, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.1, interactive=False).add_to(fg_impact_zones)
+    folium.Circle(location=start_point, radius=500, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.2, interactive=False).add_to(fg_impact_zones)
 
     # วาดเส้นทางขับรถ
-    folium.PolyLine(
-        rd['coords'], color="#3388ff", weight=5, opacity=0.8,
-        tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม."
-    ).add_to(m)
-    
-    # ปักหมุดเริ่ม-จบ
-    folium.Marker(rd['start'], icon=folium.Icon(color='darkred', icon='fire', prefix='fa'), tooltip="จุดเกิดเหตุ (Start)").add_to(m)
+    folium.PolyLine(rd['coords'], color="#3388ff", weight=5, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
     folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
     
-    # ปรับมุมมองให้ครอบคลุมรัศมีทั้งหมด
-    m.fit_bounds([[start_point[0]-0.045, start_point[1]-0.045], [start_point[0]+0.045, start_point[1]+0.045]])
+    # ปรับมุมมองแผนที่ให้ครอบคลุม 5km โซน
+    min_lat, max_lat = min(start_point[0], rd['end'][0]) - 0.045, max(start_point[0], rd['end'][0]) + 0.045
+    min_lon, max_lon = min(start_point[1], rd['end'][1]) - 0.045, max(start_point[1], rd['end'][1]) + 0.045
+    m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
 
-# แอดเลเยอร์ทั้งหมดลงแผนที่
 fg_boundary.add_to(m)
 fg_hospital.add_to(m)
 fg_gas.add_to(m)
 fg_factory.add_to(m)
-fg_impact_zones.add_to(m) # เลเยอร์รัศมี
+fg_impact_zones.add_to(m) 
 folium.LayerControl(collapsed=False).add_to(m)
 
 # ==========================================
-# 6. นำแผนที่มาแสดงในหน้าเว็บ
+# 7. Render แผนที่และดักจับ Event การคลิกเมาส์
 # ==========================================
-st_folium(m, width="100%", height=700)
+map_data = st_folium(m, width="100%", height=700)
+
+# ดักจับพิกัดจากการคลิกของแผนที่
+clicked_point = None
+if map_data:
+    # ตรวจสอบว่าผู้ใช้คลิกโดน Marker หรือคลิกบนพื้นถนนธรรมดา
+    if map_data.get("last_object_clicked"):
+        clicked_point = map_data["last_object_clicked"]
+    elif map_data.get("last_clicked"):
+        clicked_point = map_data["last_clicked"]
+
+# หากมีการคลิกจุดใหม่ที่ยังไม่เคยถูกประมวลผล
+if clicked_point and clicked_point != st.session_state.last_processed_click:
+    st.session_state.last_processed_click = clicked_point
+    
+    # หากคลิกครบ 2 จุดไปแล้ว การคลิกครั้งที่ 3 จะเป็นการ "ล้างข้อมูล" และนับเป็นจุดเริ่มต้นใหม่
+    if len(st.session_state.map_clicks) >= 2:
+        st.session_state.map_clicks = [(clicked_point['lat'], clicked_point['lng'])]
+        st.session_state.route_data = None
+    else:
+        # หากเพิ่งคลิกครั้งแรกหรือครั้งที่สอง ก็เพิ่มลงไปใน List
+        st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
+    
+    # สั่งให้แอปรีเฟรชตัวเอง เพื่อเอาพิกัดไปคำนวณและวาดเส้นทาง
+    st.rerun()
