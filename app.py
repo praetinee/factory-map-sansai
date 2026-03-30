@@ -104,7 +104,52 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     return distance
 
 # ==========================================
-# 3. ส่วนแถบเมนูด้านข้าง (Sidebar)
+# 3. เตรียมข้อมูลพิกัดสถานที่ทั้งหมดล่วงหน้า
+# ==========================================
+# ดึงข้อมูลทั้งหมดก่อนนำไปสร้างแผนที่และ Sidebar
+boundary_geo = load_boundary()
+gas_stations = load_gas_stations()
+df_factories = load_factories()
+
+# สร้าง Dictionary เก็บชื่อสถานที่และพิกัด {"ไอคอน+ชื่อสถานที่": (lat, lon)}
+locations_dict = {}
+
+# เพิ่มข้อมูลโรงพยาบาลลงในตัวเลือก
+hospitals = [
+    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
+    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
+]
+for h in hospitals:
+    locations_dict[f"🏥 {h['name']}"] = (h['lat'], h['lon'])
+
+# เพิ่มข้อมูลปั๊มน้ำมันลงในตัวเลือก
+for el in gas_stations:
+    lat = el.get('lat') or (el.get('center', {}).get('lat'))
+    lon = el.get('lon') or (el.get('center', {}).get('lon'))
+    if lat and lon:
+        name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
+        brand = el.get('tags', {}).get('brand', '')
+        display_name = f"⛽ {name}" if name != 'ปั๊มน้ำมันทั่วไป' else f"⛽ {brand} (ปั๊มน้ำมัน)"
+        locations_dict[display_name] = (lat, lon)
+
+# เพิ่มข้อมูลโรงงานลงในตัวเลือก
+if not df_factories.empty:
+    for idx, row in df_factories.iterrows():
+        try:
+            if len(row) >= 8 and pd.notna(row.iloc[7]):
+                coords_str = str(row.iloc[7]).strip()
+                if ',' in coords_str:
+                    lat_str, lon_str = coords_str.replace('"', '').split(',')
+                    lat, lon = float(lat_str.strip()), float(lon_str.strip())
+                    
+                    raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
+                    full_name = raw_name.split('\n')[0].replace('"', '')
+                    locations_dict[f"🏭 {full_name}"] = (lat, lon)
+        except Exception:
+            pass # ข้ามถ้าข้อมูลพิกัดมีปัญหา
+
+# ==========================================
+# 4. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
 st.sidebar.header("⚙️ การจัดการข้อมูล")
 
@@ -137,23 +182,31 @@ st.sidebar.success("""
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📏 เครื่องมือคำนวณระยะทาง")
-with st.sidebar.expander("คำนวณระยะทางระหว่าง 2 จุด", expanded=False):
-    st.markdown("**จุดเริ่มต้น (พิกัด 1)**")
-    lat1 = st.number_input("ละติจูด 1", value=18.913500, format="%.6f")
-    lon1 = st.number_input("ลองจิจูด 1", value=99.027900, format="%.6f")
-    
-    st.markdown("**จุดปลายทาง (พิกัด 2)**")
-    lat2 = st.number_input("ละติจูด 2", value=18.921246, format="%.6f") # พิกัดตัวอย่าง รพ.สันทราย
-    lon2 = st.number_input("ลองจิจูด 2", value=98.994203, format="%.6f")
-    
-    if st.button("คำนวณระยะทาง", key="calc_dist_btn"):
-        dist = calculate_distance(lat1, lon1, lat2, lon2)
-        st.success(f"ระยะทางประมาณ: **{dist:.2f} กิโลเมตร**")
+with st.sidebar.expander("คำนวณระยะทางระหว่าง 2 สถานที่", expanded=False):
+    if locations_dict:
+        location_names = list(locations_dict.keys())
+        
+        # ให้ผู้ใช้เลือกจาก Dropdown แทนการพิมพ์
+        point1 = st.selectbox("จุดเริ่มต้น", options=location_names, index=0)
+        point2 = st.selectbox("จุดปลายทาง", options=location_names, index=1 if len(location_names) > 1 else 0)
+        
+        if st.button("คำนวณระยะทาง", key="calc_dist_btn"):
+            lat1, lon1 = locations_dict[point1]
+            lat2, lon2 = locations_dict[point2]
+            dist = calculate_distance(lat1, lon1, lat2, lon2)
+            
+            # ลบไอคอน (อิโมจิ 2 ตัวหน้าสุด) ออกเพื่อแสดงผลให้อ่านง่ายขึ้น
+            name1_clean = point1[2:].strip()
+            name2_clean = point2[2:].strip()
+            
+            st.success(f"ระยะทางจาก **{name1_clean}**\n\nถึง **{name2_clean}**\n\nประมาณ: **{dist:.2f} กิโลเมตร**")
+    else:
+        st.info("กำลังโหลดข้อมูลสถานที่...")
 
 # ==========================================
-# 4. การสร้างแผนที่ด้วย Folium
+# 5. การสร้างแผนที่ด้วย Folium
 # ==========================================
-# 4.1 สร้างแผนที่เปล่า
+# 5.1 สร้างแผนที่เปล่า
 m = folium.Map(location=[18.9135, 99.0279], zoom_start=11)
 
 # เพิ่ม Tile Layer (พื้นหลัง Google Maps)
@@ -172,25 +225,20 @@ folium.TileLayer(
     show=False # ซ่อนไว้เป็นทางเลือก
 ).add_to(m)
 
-# 4.2 สร้างกลุ่มเลเยอร์ (Feature Groups)
+# 5.2 สร้างกลุ่มเลเยอร์ (Feature Groups)
 fg_boundary = folium.FeatureGroup(name="🟥 ขอบเขต อ.สันทราย")
 fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
 fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
 fg_factory = folium.FeatureGroup(name="📍 โรงงาน (ตามความเสี่ยง)")
 
-# 4.3 โหลดและเพิ่มข้อมูลขอบเขต
-boundary_geo = load_boundary()
+# 5.3 เพิ่มข้อมูลขอบเขต
 if boundary_geo:
     folium.GeoJson(
         boundary_geo,
         style_function=lambda x: {'color': 'red', 'weight': 4, 'fillColor': 'red', 'fillOpacity': 0.04}
     ).add_to(fg_boundary)
 
-# 4.4 เพิ่มข้อมูลโรงพยาบาล
-hospitals = [
-    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
-    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
-]
+# 5.4 เพิ่มข้อมูลโรงพยาบาล
 for h in hospitals:
     icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
     
@@ -206,8 +254,7 @@ for h in hospitals:
         popup=folium.Popup(popup_html, max_width=200)
     ).add_to(fg_hospital)
 
-# 4.5 โหลดและเพิ่มปั๊มน้ำมัน
-gas_stations = load_gas_stations()
+# 5.5 เพิ่มปั๊มน้ำมัน
 for el in gas_stations:
     lat = el.get('lat') or (el.get('center', {}).get('lat'))
     lon = el.get('lon') or (el.get('center', {}).get('lon'))
@@ -231,10 +278,8 @@ for el in gas_stations:
             popup=folium.Popup(popup_html, max_width=250)
         ).add_to(fg_gas)
 
-# 4.6 โหลดและเพิ่มข้อมูลโรงงาน (จาก CSV/Google Sheets)
-df_factories = load_factories()
+# 5.6 เพิ่มข้อมูลโรงงาน (จาก CSV/Google Sheets)
 factory_count = 0
-
 if not df_factories.empty:
     for idx, row in df_factories.iterrows():
         try:
@@ -299,6 +344,6 @@ fg_factory.add_to(m)
 folium.LayerControl(collapsed=False).add_to(m)
 
 # ==========================================
-# 5. นำแผนที่มาแสดงในหน้าเว็บ Streamlit
+# 6. นำแผนที่มาแสดงในหน้าเว็บ Streamlit
 # ==========================================
 st_folium(m, width="100%", height=700)
