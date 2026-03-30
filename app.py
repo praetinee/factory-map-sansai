@@ -207,7 +207,7 @@ with st.sidebar.expander("คำนวณเส้นทางและประ
                     st.error("ไม่สามารถคำนวณเส้นทางได้ กรุณาลองใหม่อีกครั้ง")
                     
         with col2:
-            if st.button("ล้างข้อมูล", use_container_width=True):
+            if st.button("🗑️ ล้างเส้นทาง", use_container_width=True):
                 st.session_state.route_data = None
                 st.rerun()
 
@@ -262,6 +262,29 @@ routing_js = f"""
         var routingControl = null;
         var waypoints = [];
         var tempMarkers = [];
+        
+        // --- เพิ่มปุ่มล้างเส้นทางบนแผนที่ ---
+        var ClearButton = L.Control.extend({{
+            options: {{ position: 'topleft' }},
+            onAdd: function (map) {{
+                var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                container.innerHTML = '<a href="#" title="ล้างเส้นทางบนแผนที่" style="width: auto; height: auto; padding: 5px 10px; background-color: white; color: #dc2626; font-weight: bold; text-decoration: none; display: flex; align-items: center; gap: 5px;">🗑️ ล้างเส้นทาง (คลิก 2 จุด)</a>';
+                container.onclick = function(e) {{
+                    L.DomEvent.stopPropagation(e);
+                    e.preventDefault();
+                    waypoints = [];
+                    tempMarkers.forEach(function(m) {{ map.removeLayer(m); }});
+                    tempMarkers = [];
+                    if (routingControl) {{
+                        map.removeControl(routingControl);
+                        routingControl = null;
+                    }}
+                }}
+                return container;
+            }}
+        }});
+        map.addControl(new ClearButton());
+        // ------------------------------------
         
         map.on('click', function(e) {{
             // ถ้ามีเส้นทางเดิมอยู่แล้ว (คลิกครบ 2 จุดไปแล้ว) ให้เคลียร์ค่าเริ่มใหม่
@@ -382,21 +405,21 @@ if st.session_state.route_data:
     folium.Circle(
         location=start_point, radius=5000, color='#059669', weight=1,
         fill=True, fill_color='#059669', fill_opacity=0.05,
-        tooltip="🟢 โซนปลอดภัย (Cold Zone) รัศมี 5 กม."
+        interactive=False # ปิดกั้นการดักจับเมาส์ ทำให้คลิกทะลุได้
     ).add_to(fg_impact_zones)
     
     # 2. โซนเหลือง (2 km)
     folium.Circle(
         location=start_point, radius=2000, color='#d97706', weight=2,
         fill=True, fill_color='#d97706', fill_opacity=0.1,
-        tooltip="🟡 โซนเฝ้าระวัง (Warm Zone) รัศมี 2 กม."
+        interactive=False
     ).add_to(fg_impact_zones)
     
     # 3. โซนแดง (500 m)
     folium.Circle(
         location=start_point, radius=500, color='#dc2626', weight=3,
         fill=True, fill_color='#dc2626', fill_opacity=0.2,
-        tooltip="🔴 โซนอันตรายสูงสุด (Hot Zone) รัศมี 500 ม."
+        interactive=False
     ).add_to(fg_impact_zones)
 
     # วาดเส้นทางขับรถ
