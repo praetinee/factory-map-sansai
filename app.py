@@ -211,7 +211,7 @@ with st.sidebar.expander("คำนวณเส้นทางและประ
                 st.session_state.route_data = None
                 st.rerun()
 
-    # แสดงผลการคำนวณและประเมินโซน (เปลี่ยนมาใช้ Native Components ของ Streamlit เพื่อป้องกันบั๊ก HTML)
+    # แสดงผลการคำนวณและประเมินโซน (ใช้ Native Components ของ Streamlit เพื่อป้องกันบั๊ก HTML)
     if st.session_state.route_data:
         rd = st.session_state.route_data
         s_dist = rd['straight_dist']
