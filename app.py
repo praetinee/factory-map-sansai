@@ -10,38 +10,36 @@ import math
 # ==========================================
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
-# แทรก CSS เพื่อโหลดฟอนต์ โดยปรับให้ปลอดภัย ไม่ไปกระทบกับไอคอน (SVG) ของ Streamlit
-# เพิ่มการแก้ไขปัญหา "ไม้เอกหาย" หรือสระบนถูกตัด
+# แทรก CSS เพื่อโหลดฟอนต์ แก้ปัญหาไม้เอกหาย และปรับให้ยืดหยุ่น (Responsive)
 st.markdown("""
     <style>
         @import url('https://fonts.cdnfonts.com/css/google-sans');
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
         
-        /* กำหนดฟอนต์ให้เฉพาะแท็กข้อความทั่วไป พร้อมขยายความสูงบรรทัดกันตัวอักษรโดนตัด */
-        html, body, p, h1, h2, h3, h4, h5, h6, span, label, div {
-            font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;
+        /* กำหนดฟอนต์หลัก และบังคับความสูงบรรทัดเพื่อป้องกันไม้เอก/สระบนโดนตัด */
+        html, body, [class*="st-"], p, h1, h2, h3, h4, h5, h6, span, label, div {
+            font-family: 'Google Sans', 'Noto Sans Thai', sans-serif !important;
             line-height: 1.6 !important; 
         }
         
-        /* เพิ่มพื้นที่ด้านบนให้หัวข้อใหญ่ เพื่อให้แสดงไม้เอกและสระบนได้อย่างสมบูรณ์ */
+        /* เพิ่มพื้นที่ด้านบนให้หัวข้อโดยเฉพาะ */
         h1, h2, h3 {
-            padding-top: 0.3em !important;
-            padding-bottom: 0.2em !important;
-            overflow: visible !important;
+            padding-top: 12px !important;
+            padding-bottom: 8px !important;
         }
         
-        /* ป้องกันไม่ให้ฟอนต์ไปทับไอคอนลูกศร, เมนูย่อขยาย หรือกราฟิก SVG ต่างๆ */
+        /* ป้องกันไม่ให้ฟอนต์ไปทับไอคอนต่างๆ ของระบบ */
         svg, svg *, i, .material-icons, [class*="icon"] {
             font-family: inherit !important;
         }
         
-        /* ขยายพื้นที่หน้าจอให้กว้างที่สุด และลดขอบจอให้เหลือน้อยที่สุด */
+        /* ปรับโครงสร้างหน้าเว็บให้ยืดหยุ่น รองรับทั้งมือถือและคอมพิวเตอร์ */
         .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-            max-width: 100% !important; /* บังคับขยายชิดขอบจอ 100% */
+            padding-top: 1.5rem !important;
+            padding-bottom: 1.5rem !important;
+            padding-left: 3% !important; /* ใช้เปอร์เซ็นต์เพื่อให้ยืดหยุ่นตามขนาดจอ */
+            padding-right: 3% !important;
+            max-width: 100% !important; 
         }
     </style>
 """, unsafe_allow_html=True)
@@ -161,7 +159,6 @@ if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None
             }
         else:
             st.sidebar.error("❌ ไม่สามารถคำนวณเส้นทางได้ (จุดที่เลือกอาจอยู่ห่างไกลถนนเกินไป)")
-            # ลบจุดที่ 2 ออกเพื่อให้เลือกใหม่ได้
             st.session_state.map_clicks.pop()
 
 # ==========================================
@@ -253,13 +250,11 @@ elif mode == "📋 เลือกจากรายชื่อ":
             lat1, lon1 = locations_dict[point1]
             lat2, lon2 = locations_dict[point2]
             
-            # บันทึกพิกัดลงในความจำแล้วบังคับรีโหลดให้โปรแกรมคำนวณ
             st.session_state.map_clicks = [(lat1, lon1), (lat2, lon2)]
             st.session_state.route_data = None
-            st.session_state.map_center = [lat1, lon1] # เลื่อนศูนย์กลางแผนที่ไปจุดเกิดเหตุ
+            st.session_state.map_center = [lat1, lon1] 
             st.rerun()
 
-# ปุ่มล้างข้อมูลแสดงตลอดถ้ามีข้อมูล
 if len(st.session_state.map_clicks) > 0 or st.session_state.route_data:
     if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
         st.session_state.map_clicks = []
@@ -267,7 +262,6 @@ if len(st.session_state.map_clicks) > 0 or st.session_state.route_data:
         st.session_state.last_processed_click = None
         st.rerun()
 
-# แสดงผลการประเมิน (เมื่อได้เส้นทางแล้ว)
 if st.session_state.route_data:
     rd = st.session_state.route_data
     s_dist = rd['straight_dist']
@@ -293,7 +287,6 @@ if st.session_state.route_data:
 # ==========================================
 # 6. โหลดข้อมูลแผนที่หลัก (Folium)
 # ==========================================
-# ดึงตำแหน่งล่าสุดของแผนที่มาจาก Session State
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
 
 folium.TileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google', name='Google Maps (ถนน)', subdomains=['mt0', 'mt1', 'mt2', 'mt3']).add_to(m)
@@ -310,7 +303,7 @@ if boundary_geo:
 
 for h in hospitals:
     icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
-    popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>🏥 {h['name']}</b></div>"""
+    popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;"><b>🏥 {h['name']}</b></div>"""
     folium.Marker([h['lat'], h['lon']], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=200)).add_to(fg_hospital)
 
 for el in gas_stations:
@@ -320,7 +313,7 @@ for el in gas_stations:
         name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
         brand = el.get('tags', {}).get('brand', '')
         icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>⛽</div>"
-        popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;"><b>⛽ {name}</b><br><small>{brand}</small></div>"""
+        popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;"><b>⛽ {name}</b><br><small>{brand}</small></div>"""
         folium.Marker([lat, lon], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=250)).add_to(fg_gas)
 
 if not df_factories.empty:
@@ -347,7 +340,7 @@ if not df_factories.empty:
                         marker_color, fill_color = '#27ae60', '#2ecc71'
 
                     popup_html = f"""
-                        <div style="min-width: 250px; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif;">
+                        <div style="min-width: 250px; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;">
                             <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0;">🏭 {full_name}</h4>
                             <div style="margin-bottom: 8px;"><strong>⚠️ ระดับความเสี่ยง:</strong><br>{risk_level}</div>
                             <div style="margin-bottom: 8px;"><strong>📍 สถานที่ตั้ง:</strong><br>{location}</div>
@@ -369,7 +362,6 @@ if len(st.session_state.map_clicks) == 2 and st.session_state.route_data:
     rd = st.session_state.route_data
     start_point = rd['start']
     
-    # วาดวงกลมรัศมีอาชีวเวชกรรม
     folium.Circle(location=start_point, radius=5000, color='#059669', weight=1, fill=True, fill_color='#059669', fill_opacity=0.05, interactive=False).add_to(fg_impact_zones)
     folium.Circle(location=start_point, radius=2000, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.1, interactive=False).add_to(fg_impact_zones)
     folium.Circle(location=start_point, radius=500, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.2, interactive=False).add_to(fg_impact_zones)
@@ -377,7 +369,6 @@ if len(st.session_state.map_clicks) == 2 and st.session_state.route_data:
     folium.PolyLine(rd['coords'], color="#3388ff", weight=5, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
     folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
     
-    # ซูมให้พอดีกับเส้นทางเฉพาะตอนที่มีการคำนวณเส้นทางเสร็จใหม่ๆ
     min_lat, max_lat = min(start_point[0], rd['end'][0]) - 0.045, max(start_point[0], rd['end'][0]) + 0.045
     min_lon, max_lon = min(start_point[1], rd['end'][1]) - 0.045, max(start_point[1], rd['end'][1]) + 0.045
     m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
@@ -392,30 +383,24 @@ folium.LayerControl(collapsed=False).add_to(m)
 # ==========================================
 # 8. Render แผนที่และดักจับ Event การคลิกเมาส์
 # ==========================================
-# ปรับใช้ use_container_width=True เพื่อให้กว้างสุด และเพิ่มความสูงเป็น 950 เพื่อให้สูงเต็มตา
+# ปรับใช้ use_container_width=True และลดความสูงเป็น 800 เพื่อให้ตอบโจทย์ทุกขนาดหน้าจอ
 map_data = st_folium(
     m, 
     use_container_width=True, 
-    height=950, 
+    height=800, 
     returned_objects=["last_object_clicked", "last_clicked"]
 )
 
-# ดักจับพิกัดจากการคลิกของแผนที่
-clicked_point = None
 if map_data:
     if map_data.get("last_object_clicked"):
         clicked_point = map_data["last_object_clicked"]
     elif map_data.get("last_clicked"):
         clicked_point = map_data["last_clicked"]
 
-# ประมวลผลเมื่อเกิดการคลิกใหม่
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
-    
-    # อัปเดตจุดกึ่งกลางแผนที่เป็นพิกัดที่เพิ่งคลิก เพื่อป้องกันไม่ให้แผนที่เด้งกลับไปที่หน้าแรก
     st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
     
-    # ถ้าอยู่ใน "โหมดคลิกบนแผนที่" ถึงจะเอาพิกัดไปคำนวณ
     if enable_routing_click:
         if len(st.session_state.map_clicks) >= 2:
             st.session_state.map_clicks = [(clicked_point['lat'], clicked_point['lng'])]
@@ -423,4 +408,4 @@ if clicked_point and clicked_point != st.session_state.last_processed_click:
         else:
             st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
         
-        st.rerun() # รีเฟรชเพื่อวาดหมุด/เส้นทาง
+        st.rerun()
