@@ -1,4 +1,10 @@
-# ... existing code ...
+import streamlit as st
+import pandas as pd
+import folium
+from streamlit_folium import st_folium
+
+# ==========================================
+# 3. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
 # 3. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
@@ -6,7 +12,7 @@ st.sidebar.header("⚙️ การจัดการข้อมูล")
 
 # ปุ่มโหลดข้อมูลโรงงานใหม่ (เคลียร์ Cache ของโรงงาน)
 if st.sidebar.button("🔄 รีโหลดข้อมูลโรงงานล่าสุด", use_container_width=True):
-    load_factories.clear()
+    st.cache_data.clear()
     st.sidebar.success("อัปเดตข้อมูลจากชีตแล้ว!")
 
 st.sidebar.markdown("---")
