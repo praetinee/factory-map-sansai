@@ -44,8 +44,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📍 แผนที่ความเสี่ยงโรงงาน อ.สันทราย จ.เชียงใหม่")
-st.markdown("แสดงพิกัดโรงงานตามระดับความเสี่ยง พร้อมเลเยอร์ขอบเขต ปั๊มน้ำมัน และโรงพยาบาล")
+st.title("📍 แผนที่โรงงานแยกตามประเภทความเสี่ยง อ.สันทราย")
+st.markdown("แสดงพิกัดโรงงานแบ่งตามกลุ่มความเสี่ยง พร้อมระบบกรองข้อมูลและคำนวณระยะรัศมี")
 
 # ==========================================
 # 2. ฟังก์ชันดึงข้อมูล ระบบนำทาง และคำนวณระยะ
@@ -62,17 +62,12 @@ def load_boundary():
             features = [f for f in data.get('features', []) if f.get('geometry', {}).get('type') in ['Polygon', 'MultiPolygon']]
             if features:
                 return features[0]
-            else:
-                st.sidebar.warning("⚠️ ไม่พบข้อมูลรูปแปลงขอบเขต อ.สันทราย จากเซิร์ฟเวอร์")
-        else:
-             st.sidebar.error(f"โหลดขอบเขตไม่สำเร็จ (Status: {r.status_code})")
-    except Exception as e:
-        st.sidebar.error(f"โหลดขอบเขตไม่สำเร็จ: {e}")
+    except Exception:
+        pass
     return None
 
 @st.cache_data(ttl=3600)
 def load_gas_stations():
-    # ปรับปรุง Query Overpass API ให้ค้นหาแม่นยำและถูกต้องยิ่งขึ้น
     query = """[out:json][timeout:30];
     area["name"~"สันทราย"]["admin_level"="6"]->.searchArea;
     (
@@ -84,23 +79,21 @@ def load_gas_stations():
     url = 'https://overpass-api.de/api/interpreter'
     try:
         headers = {'User-Agent': 'FactoryRiskMapApp/1.0'}
-        # ส่ง data เป็น utf-8 string ตรงๆ แทน เพื่อป้องกันปัญหาการแปลงฟอร์แมตผิดพลาด
         r = requests.post(url, data=query.encode('utf-8'), headers=headers, timeout=30)
         if r.status_code == 200:
             data = r.json()
             return data.get('elements', [])
-        else:
-            st.sidebar.error(f"⚠️ โหลดข้อมูลปั๊มน้ำมันไม่สำเร็จ (API Status: {r.status_code})")
-    except Exception as e:
-        st.sidebar.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดปั๊มน้ำมัน: {e}")
+    except Exception:
+        pass
     return []
 
 @st.cache_data(ttl=300)
 def load_factories():
     sheet_url = 'https://docs.google.com/spreadsheets/d/1qHJwpzbaFbn-ayQs4iAHodxAh1Lh5xiUuUHIL5t9v7k/export?format=csv&gid=0'
     try:
-        return pd.read_csv(sheet_url)
-    except Exception as e:
+        df = pd.read_csv(sheet_url)
+        return df
+    except Exception:
         return pd.DataFrame()
 
 # ฟังก์ชันดึงข้อมูลเส้นทางขับรถจริง (OSRM API)
@@ -117,11 +110,10 @@ def get_driving_route(lat1, lon1, lat2, lon2):
                 geometry = route['geometry']['coordinates']
                 route_coords = [[coord[1], coord[0]] for coord in geometry]
                 return distance_km, duration_min, route_coords
-    except Exception as e:
+    except Exception:
         pass
     return None, None, None
 
-# ฟังก์ชันคำนวณระยะกระจัด (เส้นตรง) เพื่อประเมินรัศมีผลกระทบ
 def calculate_straight_distance(lat1, lon1, lat2, lon2):
     R = 6371.0 # รัศมีโลก (กม.)
     lat1_rad, lon1_rad = math.radians(lat1), math.radians(lon1)
@@ -139,7 +131,6 @@ if "map_center" not in st.session_state:
     st.session_state.map_center = [18.9135, 99.0279]
 if "map_zoom" not in st.session_state:
     st.session_state.map_zoom = 11
-
 if "map_clicks" not in st.session_state:
     st.session_state.map_clicks = [] 
 if "last_processed_click" not in st.session_state:
@@ -147,280 +138,223 @@ if "last_processed_click" not in st.session_state:
 if "route_data" not in st.session_state:
     st.session_state.route_data = None 
 
-# หากผู้ใช้มีจุด 2 จุดในความจำ ให้คำนวณเส้นทางอัตโนมัติก่อนที่จะนำไปวาดบนแผนที่
+# ประมวลผลเส้นทางถ้ามี 2 จุด
 if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None:
-    with st.spinner('กำลังประมวลผลเส้นทาง...'):
-        lat1, lon1 = st.session_state.map_clicks[0]
-        lat2, lon2 = st.session_state.map_clicks[1]
-        
-        dist_km, dur_min, coords = get_driving_route(lat1, lon1, lat2, lon2)
-        straight_dist = calculate_straight_distance(lat1, lon1, lat2, lon2)
-        
-        if dist_km is not None:
-            st.session_state.route_data = {
-                'dist': dist_km,
-                'dur': dur_min,
-                'coords': coords,
-                'start': (lat1, lon1),
-                'end': (lat2, lon2),
-                'straight_dist': straight_dist
-            }
-        else:
-            st.sidebar.error("❌ ไม่สามารถคำนวณเส้นทางได้ (จุดที่เลือกอาจอยู่ห่างไกลถนนเกินไป)")
-            st.session_state.map_clicks.pop()
+    lat1, lon1 = st.session_state.map_clicks[0]
+    lat2, lon2 = st.session_state.map_clicks[1]
+    dist_km, dur_min, coords = get_driving_route(lat1, lon1, lat2, lon2)
+    straight_dist = calculate_straight_distance(lat1, lon1, lat2, lon2)
+    if dist_km is not None:
+        st.session_state.route_data = {
+            'dist': dist_km, 'dur': dur_min, 'coords': coords,
+            'start': (lat1, lon1), 'end': (lat2, lon2), 'straight_dist': straight_dist
+        }
+    else:
+        st.session_state.map_clicks.pop()
 
 # ==========================================
-# 4. เตรียมข้อมูลพิกัดสถานที่ทั้งหมด (ใช้สำหรับ Dropdown)
+# 4. เตรียมข้อมูลพิกัดสถานที่
 # ==========================================
 boundary_geo = load_boundary()
 gas_stations = load_gas_stations()
 df_factories = load_factories()
 
-locations_dict = {}
-
-hospitals = [
-    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
-    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
-]
-for h in hospitals:
-    locations_dict[f"🏥 {h['name']}"] = (h['lat'], h['lon'])
-
-for el in gas_stations:
-    lat = el.get('lat') or (el.get('center', {}).get('lat'))
-    lon = el.get('lon') or (el.get('center', {}).get('lon'))
-    if lat and lon:
-        name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
-        brand = el.get('tags', {}).get('brand', '')
-        display_name = f"⛽ {name}" if name != 'ปั๊มน้ำมันทั่วไป' else f"⛽ {brand} (ปั๊มน้ำมัน)"
-        locations_dict[display_name] = (lat, lon)
-
+# --- จัดการกลุ่มความเสี่ยงและสี (คอลัมน์ F) ---
+risk_categories = []
 if not df_factories.empty:
-    for idx, row in df_factories.iterrows():
-        try:
-            if len(row) >= 8 and pd.notna(row.iloc[7]):
-                coords_str = str(row.iloc[7]).strip()
-                if ',' in coords_str:
-                    lat_str, lon_str = coords_str.replace('"', '').split(',')
-                    lat, lon = float(lat_str.strip()), float(lon_str.strip())
-                    raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
-                    full_name = raw_name.split('\n')[0].replace('"', '')
-                    locations_dict[f"🏭 {full_name}"] = (lat, lon)
-        except Exception:
-            pass
+    # คอลัมน์ F คือ index 5 (เริ่มจาก 0)
+    df_factories['risk_group'] = df_factories.iloc[:, 5].fillna('ไม่ระบุประเภทความเสี่ยง').astype(str)
+    risk_categories = sorted(df_factories['risk_group'].unique().tolist())
+
+# กำหนด Palette สีคงที่สำหรับประเภทความเสี่ยงหลักๆ
+color_map = {
+    "อัคคีภัย": "#e74c3c", 
+    "สารเคมีรั่วไหล": "#9b59b6",
+    "แอมโมเนีย": "#3498db",
+    "ฝุ่นละออง": "#95a5a6",
+    "เสียงดัง": "#f1c40f",
+    "น้ำเสีย": "#2980b9",
+    "ก๊าซหุงต้ม": "#e67e22"
+}
+
+def get_color(risk_text):
+    for key, color in color_map.items():
+        if key in risk_text: return color
+    # ถ้าไม่ตรงกับสีที่กำหนดไว้ ให้สุ่มสีจาก hash ของข้อความ
+    colors = ["#16a085", "#27ae60", "#2980b9", "#8e44ad", "#2c3e50", "#f39c12", "#d35400"]
+    return colors[hash(risk_text) % len(colors)]
 
 # ==========================================
 # 5. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
 st.sidebar.header("⚙️ การจัดการข้อมูล")
 
-# เพิ่มประสิทธิภาพปุ่มรีโหลด ให้ล้างความจำทุกอย่างแล้วโหลดใหม่ทั้งหมด
 if st.sidebar.button("🔄 รีโหลดข้อมูลใหม่ทั้งหมด", use_container_width=True):
     load_factories.clear()
     load_gas_stations.clear()
     load_boundary.clear()
-    st.sidebar.success("ล้างความจำและอัปเดตข้อมูลใหม่ทั้งหมดแล้ว!")
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📌 คำนิยามระดับความเสี่ยง")
+st.sidebar.markdown("### 📊 ตัวกรองประเภทความเสี่ยง")
+selected_risks = st.sidebar.multiselect(
+    "เลือกแสดงกลุ่มความเสี่ยง (คอลัมน์ F):",
+    options=risk_categories,
+    default=risk_categories
+)
 
-st.sidebar.error("**🔴 เสี่ยงสูง (High Risk)**\n\nกิจการอันตราย (เช่น น้ำแข็ง, สารเคมี, พลาสติก, แช่แข็ง, อบพืช) หรือ เครื่องจักร > 500 HP หรือ คนงาน > 100 คน")
-st.sidebar.warning("**🟡 เสี่ยงปานกลาง (Medium)**\n\nกิจการโรงกลึง, โลหะ, ซักรีด, เฟอร์นิเจอร์, กระจก หรือ เครื่องจักร > 100 HP หรือ คนงาน > 30 คน")
-st.sidebar.success("**🟢 เสี่ยงต่ำ (Low Risk)**\n\nกิจการขนาดเล็กทั่วไปที่ไม่ได้อยู่ในหมวดอันตราย และเครื่องจักร < 100 HP")
+# กรองข้อมูลตามที่เลือก
+df_filtered = df_factories[df_factories['risk_group'].isin(selected_risks)] if not df_factories.empty else df_factories
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
-
-# วิชเก็ตตัวเลือกโหมดการใช้งาน
-mode = st.sidebar.radio(
-    "โหมดการใช้งานแผนที่",
-    ["🔍 ดูข้อมูลปกติ", "🖱️ คลิกบนแผนที่", "📋 เลือกจากรายชื่อ"]
-)
+mode = st.sidebar.radio("โหมดการใช้งานแผนที่", ["🔍 ดูข้อมูลปกติ", "🖱️ คลิกบนแผนที่", "📋 เลือกจากรายชื่อ"])
 
 enable_routing_click = False
+locations_dict = {}
 
-# การแสดงผลตามโหมดที่เลือก
-if mode == "🔍 ดูข้อมูลปกติ":
-    st.sidebar.info("💡 **สถานะ: ดูข้อมูลปกติ** \nคลิกที่หมุดบนแผนที่เพื่อดูรายละเอียดโรงงาน/ปั๊มน้ำมัน การคลิกจะไม่ถูกนำไปคำนวณเส้นทาง")
-
-elif mode == "🖱️ คลิกบนแผนที่":
-    enable_routing_click = True
-    st.sidebar.info("💡 **วิธีใช้งาน:** \n- **คลิก 1 ครั้ง:** จุดเกิดเหตุ\n- **คลิก 2 ครั้ง:** จุดปลายทาง")
-    c1_txt = f"{st.session_state.map_clicks[0][0]:.4f}, {st.session_state.map_clicks[0][1]:.4f}" if len(st.session_state.map_clicks) > 0 else "รอคลิกแผนที่..."
-    c2_txt = f"{st.session_state.map_clicks[1][0]:.4f}, {st.session_state.map_clicks[1][1]:.4f}" if len(st.session_state.map_clicks) > 1 else "รอคลิกแผนที่..."
-    st.sidebar.markdown(f"🔥 **จุดเกิดเหตุ:** {c1_txt}")
-    st.sidebar.markdown(f"🏁 **จุดปลายทาง:** {c2_txt}")
-
-elif mode == "📋 เลือกจากรายชื่อ":
-    st.sidebar.info("💡 เลือกระบุจุดเริ่มต้นและปลายทางจากรายชื่อสถานที่")
-    if locations_dict:
-        location_names = list(locations_dict.keys())
-        point1 = st.sidebar.selectbox("จุดเริ่มต้น (เช่น จุดเกิดเหตุ)", options=location_names, index=0)
-        point2 = st.sidebar.selectbox("จุดปลายทาง (เช่น ศูนย์อพยพ/รพ.)", options=location_names, index=1 if len(location_names) > 1 else 0)
-        
-        if st.sidebar.button("🚀 คำนวณเส้นทาง", type="primary", use_container_width=True):
-            lat1, lon1 = locations_dict[point1]
-            lat2, lon2 = locations_dict[point2]
-            
-            st.session_state.map_clicks = [(lat1, lon1), (lat2, lon2)]
-            st.session_state.route_data = None
-            st.session_state.map_center = [lat1, lon1] 
-            st.rerun()
-
-if len(st.session_state.map_clicks) > 0 or st.session_state.route_data:
-    if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
-        st.session_state.map_clicks = []
-        st.session_state.route_data = None
-        st.session_state.last_processed_click = None
-        st.rerun()
-
-if st.session_state.route_data:
-    rd = st.session_state.route_data
-    s_dist = rd['straight_dist']
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("#### 🚗 สรุปการเดินทาง")
-    col1, col2 = st.sidebar.columns(2)
-    col1.metric("ระยะทางขับรถ", f"{rd['dist']:.2f} กม.")
-    col2.metric("เวลาเดินทาง", f"~ {rd['dur']:.0f} นาที")
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("#### 🎯 รัศมีผลกระทบ")
-    st.sidebar.caption(f"ระยะกระจัด (เส้นตรง): {s_dist:.2f} กม.")
-    
-    if s_dist <= 0.5:
-        st.sidebar.error("**🔴 โซนอันตราย (Hot Zone) < 500ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
-    elif s_dist <= 2.0:
-        st.sidebar.warning("**🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม.**\n\nอาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)")
-    else:
-        st.sidebar.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
-
-
-# ==========================================
-# 6. โหลดข้อมูลแผนที่หลัก (Folium)
-# ==========================================
-m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
-
-folium.TileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google', name='Google Maps (ถนน)', subdomains=['mt0', 'mt1', 'mt2', 'mt3']).add_to(m)
-folium.TileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid (ดาวเทียม)', subdomains=['mt0', 'mt1', 'mt2', 'mt3'], show=False).add_to(m)
-
-fg_boundary = folium.FeatureGroup(name="🟥 ขอบเขต อ.สันทราย")
-fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
-fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
-fg_factory = folium.FeatureGroup(name="📍 โรงงาน (ตามความเสี่ยง)")
-fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ (คำนวณอัตโนมัติ)")
-
-if boundary_geo:
-    folium.GeoJson(boundary_geo, style_function=lambda x: {'color': 'red', 'weight': 4, 'fillColor': 'red', 'fillOpacity': 0.04}).add_to(fg_boundary)
-
-for h in hospitals:
-    icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>🏥</div>"
-    popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;"><b>🏥 {h['name']}</b></div>"""
-    folium.Marker([h['lat'], h['lon']], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=200)).add_to(fg_hospital)
-
+# เตรียมรายชื่อสำหรับ Dropdown (อิงตามข้อมูลที่กรองแล้ว)
+hospitals = [
+    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
+    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
+]
+for h in hospitals: locations_dict[f"🏥 {h['name']}"] = (h['lat'], h['lon'])
 for el in gas_stations:
     lat = el.get('lat') or (el.get('center', {}).get('lat'))
     lon = el.get('lon') or (el.get('center', {}).get('lon'))
     if lat and lon:
         name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
-        brand = el.get('tags', {}).get('brand', '')
-        icon_html = "<div style='font-size:24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.4));'>⛽</div>"
-        popup_html = f"""<div style="font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;"><b>⛽ {name}</b><br><small>{brand}</small></div>"""
-        folium.Marker([lat, lon], icon=folium.DivIcon(html=icon_html, icon_size=(30,30), icon_anchor=(15,15)), popup=folium.Popup(popup_html, max_width=250)).add_to(fg_gas)
+        locations_dict[f"⛽ {name}"] = (lat, lon)
 
-if not df_factories.empty:
-    for idx, row in df_factories.iterrows():
+if not df_filtered.empty:
+    for idx, row in df_filtered.iterrows():
         try:
-            if len(row) >= 8 and pd.notna(row.iloc[7]):
+            if pd.notna(row.iloc[7]):
                 coords_str = str(row.iloc[7]).strip()
                 if ',' in coords_str:
                     lat_str, lon_str = coords_str.replace('"', '').split(',')
                     lat, lon = float(lat_str.strip()), float(lon_str.strip())
-                    
-                    full_name = str(row.iloc[1]).split('\n')[0].replace('"', '') if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
-                    location = str(row.iloc[2]).replace('\n', '<br>') if pd.notna(row.iloc[2]) else 'ไม่ระบุ'
-                    activity = str(row.iloc[4]).replace('\n', '<br>') if pd.notna(row.iloc[4]) else 'ไม่ระบุ'
-                    risk_details = str(row.iloc[5]).replace('\n', '<br>') if pd.notna(row.iloc[5]) else 'ไม่ระบุ'
-                    risk_level = str(row.iloc[6]) if pd.notna(row.iloc[6]) else 'ไม่ระบุ'
+                    name = str(row.iloc[1]).split('\n')[0].replace('"', '')
+                    locations_dict[f"🏭 {name}"] = (lat, lon)
+        except Exception: pass
 
-                    marker_color, fill_color = '#95a5a6', '#bdc3c7'
-                    if '🔴' in risk_level or 'เสี่ยงสูง' in risk_level:
-                        marker_color, fill_color = '#c0392b', '#e74c3c'
-                    elif '🟡' in risk_level or 'ปานกลาง' in risk_level:
-                        marker_color, fill_color = '#d35400', '#f1c40f'
-                    elif '🟢' in risk_level or 'เสี่ยงต่ำ' in risk_level:
-                        marker_color, fill_color = '#27ae60', '#2ecc71'
+if mode == "🖱️ คลิกบนแผนที่":
+    enable_routing_click = True
+    st.sidebar.info("💡 คลิกบนแผนที่เพื่อระบุจุดเกิดเหตุและปลายทาง")
+elif mode == "📋 เลือกจากรายชื่อ":
+    if locations_dict:
+        point1 = st.sidebar.selectbox("จุดเริ่มต้น (เช่น จุดเกิดเหตุ)", options=list(locations_dict.keys()), index=0)
+        point2 = st.sidebar.selectbox("จุดปลายทาง (เช่น รพ./ศูนย์อพยพ)", options=list(locations_dict.keys()), index=1 if len(locations_dict) > 1 else 0)
+        if st.sidebar.button("🚀 คำนวณเส้นทาง", type="primary", use_container_width=True):
+            st.session_state.map_clicks = [locations_dict[point1], locations_dict[point2]]
+            st.session_state.route_data = None
+            st.session_state.map_center = locations_dict[point1]
+            st.rerun()
 
-                    popup_html = f"""
-                        <div style="min-width: 250px; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;">
-                            <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0;">🏭 {full_name}</h4>
-                            <div style="margin-bottom: 8px;"><strong>⚠️ ระดับความเสี่ยง:</strong><br>{risk_level}</div>
-                            <div style="margin-bottom: 8px;"><strong>📍 สถานที่ตั้ง:</strong><br>{location}</div>
-                            <div style="margin-bottom: 8px;"><strong>⚙️ การประกอบกิจการ:</strong><br>{activity}</div>
-                            <div style="margin-bottom: 8px;"><strong>🔥 ความเสี่ยง:</strong><br>{risk_details}</div>
-                        </div>
-                    """
-                    folium.CircleMarker(location=[lat, lon], radius=8, color='white', weight=2, fill_color=fill_color, fill_opacity=0.95, popup=folium.Popup(popup_html, max_width=320)).add_to(fg_factory)
-        except Exception:
-            continue
+if len(st.session_state.map_clicks) > 0:
+    if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
+        st.session_state.map_clicks = []; st.session_state.route_data = None; st.session_state.last_processed_click = None
+        st.rerun()
 
-# ==========================================
-# 7. วาดเส้นทางและวงกลมบนแผนที่
-# ==========================================
-if len(st.session_state.map_clicks) >= 1:
-    folium.Marker(st.session_state.map_clicks[0], icon=folium.Icon(color='darkred', icon='fire', prefix='fa'), tooltip="จุดเกิดเหตุ (Start)").add_to(m)
-
-if len(st.session_state.map_clicks) == 2 and st.session_state.route_data:
+if st.session_state.route_data:
     rd = st.session_state.route_data
-    start_point = rd['start']
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("#### 🚗 สรุปการเดินทาง")
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("ระยะขับรถ", f"{rd['dist']:.2f} กม.")
+    col2.metric("เวลาเดินทาง", f"~{rd['dur']:.0f} น.")
     
-    folium.Circle(location=start_point, radius=5000, color='#059669', weight=1, fill=True, fill_color='#059669', fill_opacity=0.05, interactive=False).add_to(fg_impact_zones)
-    folium.Circle(location=start_point, radius=2000, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.1, interactive=False).add_to(fg_impact_zones)
-    folium.Circle(location=start_point, radius=500, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.2, interactive=False).add_to(fg_impact_zones)
+    s_dist = rd['straight_dist']
+    st.sidebar.caption(f"ระยะกระจัด: {s_dist:.2f} กม.")
+    if s_dist <= 0.5: st.sidebar.error("**🔴 โซนอันตราย (Hot Zone)**")
+    elif s_dist <= 2.0: st.sidebar.warning("**🟡 โซนเฝ้าระวัง (Warm Zone)**")
+    else: st.sidebar.success("**🟢 โซนปลอดภัย (Cold Zone)**")
 
-    folium.PolyLine(rd['coords'], color="#3388ff", weight=5, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
-    folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
-    
-    min_lat, max_lat = min(start_point[0], rd['end'][0]) - 0.045, max(start_point[0], rd['end'][0]) + 0.045
-    min_lon, max_lon = min(start_point[1], rd['end'][1]) - 0.045, max(start_point[1], rd['end'][1]) + 0.045
-    m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
+# ==========================================
+# 6. วาดแผนที่ (Folium)
+# ==========================================
+m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
+
+folium.TileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', attr='Google', name='Google Maps', subdomains=['mt0', 'mt1', 'mt2', 'mt3']).add_to(m)
+
+fg_boundary = folium.FeatureGroup(name="🟥 ขอบเขต อ.สันทราย")
+fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
+fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
+fg_factory = folium.FeatureGroup(name="📍 โรงงาน (แยกตามความเสี่ยง)")
+fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ")
+
+if boundary_geo:
+    folium.GeoJson(boundary_geo, style_function=lambda x: {'color': 'red', 'weight': 3, 'fillColor': 'red', 'fillOpacity': 0.03}).add_to(fg_boundary)
+
+for h in hospitals:
+    folium.Marker([h['lat'], h['lon']], icon=folium.DivIcon(html="<div style='font-size:24px;'>🏥</div>"), popup=h['name']).add_to(fg_hospital)
+
+for el in gas_stations:
+    lat = el.get('lat') or (el.get('center', {}).get('lat'))
+    lon = el.get('lon') or (el.get('center', {}).get('lon'))
+    if lat and lon:
+        name = el.get('tags', {}).get('name', 'ปั๊มน้ำมัน')
+        folium.Marker([lat, lon], icon=folium.DivIcon(html="<div style='font-size:20px;'>⛽</div>"), popup=name).add_to(fg_gas)
+
+# วาดหมุดโรงงาน (ใช้ข้อมูลที่กรองแล้ว)
+if not df_filtered.empty:
+    for idx, row in df_filtered.iterrows():
+        try:
+            if pd.notna(row.iloc[7]):
+                coords_str = str(row.iloc[7]).replace('"', '').split(',')
+                lat, lon = float(coords_str[0].strip()), float(coords_str[1].strip())
+                
+                risk_info = str(row.iloc[5])
+                node_color = get_color(risk_info)
+                
+                full_name = str(row.iloc[1]).split('\n')[0]
+                activity = str(row.iloc[4]).replace('\n', '<br>')
+                
+                popup_content = f"""
+                    <div style="min-width: 200px; font-family: 'Noto Sans Thai', sans-serif;">
+                        <b style="color: {node_color}; font-size: 14px;">🏭 {full_name}</b><br>
+                        <hr style="margin: 5px 0;">
+                        <b>🔥 ความเสี่ยง:</b><br>{risk_info}<br>
+                        <b>⚙️ กิจการ:</b><br><small>{activity}</small>
+                    </div>
+                """
+                folium.CircleMarker(
+                    location=[lat, lon], radius=9, color='white', weight=2,
+                    fill_color=node_color, fill_opacity=0.9,
+                    popup=folium.Popup(popup_content, max_width=300)
+                ).add_to(fg_factory)
+        except Exception: continue
+
+# วาดเส้นทางและวงรัศมี
+if len(st.session_state.map_clicks) >= 1:
+    folium.Marker(st.session_state.map_clicks[0], icon=folium.Icon(color='red', icon='fire', prefix='fa')).add_to(m)
+    if st.session_state.route_data:
+        rd = st.session_state.route_data
+        folium.Circle(rd['start'], radius=500, color='#dc2626', fill=True, fill_opacity=0.2).add_to(fg_impact_zones)
+        folium.Circle(rd['start'], radius=2000, color='#d97706', fill=True, fill_opacity=0.1).add_to(fg_impact_zones)
+        folium.PolyLine(rd['coords'], color="#3388ff", weight=5).add_to(m)
+        folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa')).add_to(m)
 
 fg_boundary.add_to(m)
 fg_hospital.add_to(m)
 fg_gas.add_to(m)
 fg_factory.add_to(m)
-fg_impact_zones.add_to(m) 
+fg_impact_zones.add_to(m)
 folium.LayerControl(collapsed=False).add_to(m)
 
 # ==========================================
-# 8. Render แผนที่และดักจับ Event การคลิกเมาส์
+# 7. Render แผนที่และดักจับคลิก
 # ==========================================
-# ปรับใช้ use_container_width=True และลดความสูงเป็น 800 เพื่อให้ตอบโจทย์ทุกขนาดหน้าจอ
-map_data = st_folium(
-    m, 
-    use_container_width=True, 
-    height=800, 
-    returned_objects=["last_object_clicked", "last_clicked"]
-)
+map_output = st_folium(m, use_container_width=True, height=750, returned_objects=["last_clicked"])
 
-# เพิ่มการประกาศตัวแปรเริ่มต้น เพื่อป้องกัน NameError 
-clicked_point = None
-
-if map_data:
-    if map_data.get("last_object_clicked"):
-        clicked_point = map_data["last_object_clicked"]
-    elif map_data.get("last_clicked"):
-        clicked_point = map_data["last_clicked"]
-
-if clicked_point and clicked_point != st.session_state.last_processed_click:
-    st.session_state.last_processed_click = clicked_point
-    st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
-    
-    if enable_routing_click:
-        if len(st.session_state.map_clicks) >= 2:
-            st.session_state.map_clicks = [(clicked_point['lat'], clicked_point['lng'])]
-            st.session_state.route_data = None
-        else:
-            st.session_state.map_clicks.append((clicked_point['lat'], clicked_point['lng']))
-        
-        st.rerun()
+if map_output and map_output.get("last_clicked"):
+    clicked = map_output["last_clicked"]
+    if clicked != st.session_state.last_processed_click:
+        st.session_state.last_processed_click = clicked
+        if enable_routing_click:
+            if len(st.session_state.map_clicks) >= 2:
+                st.session_state.map_clicks = [(clicked['lat'], clicked['lng'])]
+                st.session_state.route_data = None
+            else:
+                st.session_state.map_clicks.append((clicked['lat'], clicked['lng']))
+            st.rerun()
