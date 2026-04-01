@@ -107,6 +107,7 @@ for el in gas_stations:
 if not df_factories.empty:
     for idx, row in df_factories.iterrows():
         try:
+            # ค้นหาพิกัดแบบอัตโนมัติ ไม่ต้องฟิกซ์หมายเลขคอลัมน์
             lat, lon = None, None
             for val in row.values:
                 val_str = str(val).strip().replace('"', '')
@@ -115,13 +116,14 @@ if not df_factories.empty:
                     if len(parts) == 2:
                         try:
                             temp_lat, temp_lon = float(parts[0].strip()), float(parts[1].strip())
-                            if 5 < temp_lat < 21 and 97 < temp_lon < 106: 
+                            if 5 < temp_lat < 21 and 97 < temp_lon < 106: # พิกัดในไทย
                                 lat, lon = temp_lat, temp_lon
                                 break
                         except ValueError:
                             pass
             
             if lat is not None and lon is not None:
+                # พยายามหาชื่อโรงงาน (สมมติว่าอยู่คอลัมน์ที่ 1 หรือหาคอลัมน์แรกที่เป็น string)
                 raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
                 full_name = raw_name.split('\n')[0].replace('"', '')
                 locations_dict[f"🏭 {full_name}"] = (lat, lon)
@@ -137,9 +139,11 @@ enable_routing_click, factory_filter = render_sidebar(locations_dict)
 # 5. กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
 # ==========================================
 if not df_factories.empty and factory_filter != "แสดงทั้งหมด":
+    # นำทุกคอลัมน์มาต่อกันเป็นข้อความเดียว เพื่อค้นหาแบบครอบคลุม ป้องกันตารางโดนลบคอลัมน์
     df_search = df_factories.astype(str).fillna('')
     combined_text = df_search.apply(lambda r: ' '.join(r.values), axis=1)
     
+    # 🌟 จัดกลุ่มคีย์เวิร์ดใหม่ (ตัดคำที่อาจซ้ำกับชื่อที่อยู่ออก เช่น 'ทราย' จากสันทราย, 'บ่อ' จากชื่อหมู่บ้าน)
     kw_boiler = 'หม้อน้ำ|boiler'
     kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
     kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
@@ -190,16 +194,11 @@ map_data = st_folium(
     m, 
     use_container_width=True, 
     height=800, 
-    # 🌟 หัวใจสำคัญของการแก้ซูมเด้ง: สั่งให้ส่งค่า "zoom" ปัจจุบันกลับมาด้วยทุกครั้ง
-    returned_objects=["last_object_clicked", "last_clicked", "zoom"]
+    returned_objects=["last_object_clicked", "last_clicked"]
 )
 
 clicked_point = None
 if map_data:
-    # 🌟 จำค่า Zoom ปัจจุบันเอาไว้ แผนที่จะได้ไม่เด้งกลับไป Zoom 11
-    if map_data.get("zoom"):
-        st.session_state.map_zoom = map_data["zoom"]
-        
     if map_data.get("last_object_clicked"):
         clicked_point = map_data["last_object_clicked"]
     elif map_data.get("last_clicked"):
@@ -207,9 +206,6 @@ if map_data:
 
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
-    
-    # 🌟 อัปเดตจุดศูนย์กลางแผนที่ให้เป็นจุดที่เพิ่งคลิก จะได้ไม่ต้องเสียเวลาเลื่อนหา
-    st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
     
     if enable_routing_click:
         if len(st.session_state.map_clicks) >= 2:
