@@ -61,13 +61,13 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
                     # สีหมุดโรงงาน (เปลี่ยนเป็นสีเหลืองทั้งหมด)
                     marker_color, fill_color = '#e67e22', '#f1c40f'
 
-                    # Popup แสดงข้อมูลโรงงาน (เอาไอคอนไฟออกแล้ว)
+                    # Popup แสดงข้อมูลโรงงาน (เปลี่ยนไอคอนเป็น ⚠️ แล้ว)
                     popup_html = f"""
                         <div style="min-width: 250px; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;">
                             <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0;">🏭 {full_name}</h4>
                             <div style="margin-bottom: 8px;"><strong>📍 สถานที่ตั้ง:</strong><br>{location}</div>
                             <div style="margin-bottom: 8px;"><strong>⚙️ การประกอบกิจการ:</strong><br>{activity}</div>
-                            <div style="margin-bottom: 8px;"><strong>ความเสี่ยง:</strong><br>{risk_details}</div>
+                            <div style="margin-bottom: 8px;"><strong>⚠️ ความเสี่ยง:</strong><br>{risk_details}</div>
                         </div>
                     """
                     folium.CircleMarker(location=[lat, lon], radius=8, color='white', weight=2, fill_color=fill_color, fill_opacity=0.95, popup=folium.Popup(popup_html, max_width=320)).add_to(fg_factory)
