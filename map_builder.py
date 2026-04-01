@@ -35,7 +35,7 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
     if not df_factories.empty:
         for idx, row in df_factories.iterrows():
             try:
-                # ค้นหาพิกัดแบบอัตโนมัติ ไม่ต้องฟิกซ์คอลัมน์
+                # 🌟 ระบบค้นหาพิกัดแบบอัตโนมัติ กวาดหาทุกคอลัมน์ ป้องกันการลบหรือสลับคอลัมน์
                 lat, lon = None, None
                 for val in row.values:
                     val_str = str(val).strip().replace('"', '')
@@ -44,24 +44,24 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
                         if len(parts) == 2:
                             try:
                                 temp_lat, temp_lon = float(parts[0].strip()), float(parts[1].strip())
-                                if 5 < temp_lat < 21 and 97 < temp_lon < 106:
+                                if 5 < temp_lat < 21 and 97 < temp_lon < 106: # เช็คพิกัดในไทย
                                     lat, lon = temp_lat, temp_lon
                                     break
                             except ValueError:
                                 pass
                 
                 if lat is not None and lon is not None:
-                    full_name = str(row.iloc[1]).split('\n')[0].replace('"', '') if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
+                    full_name = str(row.iloc[1]).split('\n')[0].replace('"', '') if len(row) > 1 and pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
                     location = str(row.iloc[2]).replace('\n', '<br>') if len(row) > 2 and pd.notna(row.iloc[2]) else 'ไม่ระบุ'
                     
                     # ป้องกัน Error กรณีที่คอลัมน์ถูกลบไป
                     activity = str(row.iloc[4]).replace('\n', '<br>') if len(row) > 4 and pd.notna(row.iloc[4]) else 'ไม่ระบุ'
                     risk_details = str(row.iloc[5]).replace('\n', '<br>') if len(row) > 5 and pd.notna(row.iloc[5]) else 'ไม่ระบุ'
 
-                    # สีหมุดโรงงาน (เหลือง)
+                    # สีหมุดโรงงาน (เปลี่ยนเป็นสีเหลืองทั้งหมด)
                     marker_color, fill_color = '#e67e22', '#f1c40f'
 
-                    # เอาข้อมูลความเสี่ยงออกจาก Popup ด้วย
+                    # Popup แสดงข้อมูลโรงงาน
                     popup_html = f"""
                         <div style="min-width: 250px; font-family: 'Google Sans', 'Noto Sans Thai', sans-serif; color: #333;">
                             <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0;">🏭 {full_name}</h4>
