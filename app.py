@@ -190,15 +190,17 @@ map_data = st_folium(
     m, 
     use_container_width=True, 
     height=800, 
-    # 🌟 หัวใจสำคัญของการแก้ซูมเด้ง: สั่งให้ส่งค่า "zoom" ปัจจุบันกลับมาด้วยทุกครั้ง
-    returned_objects=["last_object_clicked", "last_clicked", "zoom"]
+    # 🌟 หัวใจสำคัญ: เพิ่มคำว่า "center" เข้าไปเพื่อให้ระบบจำพิกัดหน้าจอปัจจุบันด้วย ไม่ใช่แค่ zoom อย่างเดียว
+    returned_objects=["last_object_clicked", "last_clicked", "zoom", "center"]
 )
 
 clicked_point = None
 if map_data:
-    # 🌟 จำค่า Zoom ปัจจุบันเอาไว้ แผนที่จะได้ไม่เด้งกลับไป Zoom 11
+    # 🌟 จำค่าหน้าจอปัจจุบันทุกอย่าง ทั้ง Zoom และ Center แผนที่จะได้นิ่งสนิท
     if map_data.get("zoom"):
         st.session_state.map_zoom = map_data["zoom"]
+    if map_data.get("center"):
+        st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
         
     if map_data.get("last_object_clicked"):
         clicked_point = map_data["last_object_clicked"]
@@ -208,8 +210,8 @@ if map_data:
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
     
-    # 🌟 อัปเดตจุดศูนย์กลางแผนที่ให้เป็นจุดที่เพิ่งคลิก จะได้ไม่ต้องเสียเวลาเลื่อนหา
-    st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
+    # 🌟 ลบการเอาตำแหน่งการคลิกไปบังคับแทนที่ map_center ออกแล้ว 
+    # (เพราะเราอยากให้มุมมองค้างอยู่ที่เดิม ไม่ใช่กระโดดไปหาจุดที่คลิก)
     
     if enable_routing_click:
         if len(st.session_state.map_clicks) >= 2:
