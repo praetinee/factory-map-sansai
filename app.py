@@ -131,46 +131,74 @@ if not df_factories.empty:
             pass
 
 # ==========================================
-# 4. ส่วนแถบเมนูด้านข้าง (Sidebar)
+# 4. คำนวณจำนวนโรงงานในแต่ละประเภท & แถบเมนูด้านข้าง (Sidebar)
 # ==========================================
-enable_routing_click, factory_filter = render_sidebar(locations_dict)
+# เตรียมตัวแปรเก็บจำนวนของแต่ละหมวดหมู่
+category_counts = {
+    "แสดงทั้งหมด": len(df_factories),
+    "หม้อน้ำ (Boiler)": 0,
+    "ฝุ่น (PM2.5)": 0,
+    "แอมโมเนีย (Ammonia/ห้องเย็น)": 0,
+    "ซิลิกา (Silica)": 0,
+    "เชื้อโรค (Biohazard)": 0,
+    "แร่ใยหิน (Asbestos)": 0,
+    "อับอากาศ (Confined Space)": 0,
+    "ตะกั่ว (Lead)": 0,
+    "ทั่วไป (อื่นๆ)": 0
+}
+
+# 🌟 จัดกลุ่มคีย์เวิร์ด
+kw_boiler = 'หม้อน้ำ|boiler'
+kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
+kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
+kw_silica = 'ซิลิกา|silica|บ่อทราย|ท่าทราย|ดูดทราย|โม่หิน|กระจก|เซรามิก' 
+kw_pathogen = 'เชื้อโรค|ชีวภาพ|ขยะติดเชื้อ|โรงพยาบาล|คลินิก'
+kw_asbestos = 'แร่ใยหิน|asbestos|กระเบื้อง|ฉนวน|เบรก'
+kw_confined = 'อับอากาศ|ไซโล|ถังขนาดใหญ่|อุโมงค์|confined'
+kw_lead = 'ตะกั่ว|lead|แบตเตอรี่|หลอม|อิเล็กทรอนิกส์'
+all_hazards = f"{kw_boiler}|{kw_pm25}|{kw_ammonia}|{kw_silica}|{kw_pathogen}|{kw_asbestos}|{kw_confined}|{kw_lead}"
+
+# หากมีข้อมูล ให้นับจำนวนไว้ก่อนเลย
+if not df_factories.empty:
+    df_search = df_factories.astype(str).fillna('')
+    combined_text = df_search.apply(lambda r: ' '.join(r.values), axis=1)
+    
+    category_counts["หม้อน้ำ (Boiler)"] = int(combined_text.str.contains(kw_boiler, case=False).sum())
+    category_counts["ฝุ่น (PM2.5)"] = int(combined_text.str.contains(kw_pm25, case=False).sum())
+    category_counts["แอมโมเนีย (Ammonia/ห้องเย็น)"] = int(combined_text.str.contains(kw_ammonia, case=False).sum())
+    category_counts["ซิลิกา (Silica)"] = int(combined_text.str.contains(kw_silica, case=False).sum())
+    category_counts["เชื้อโรค (Biohazard)"] = int(combined_text.str.contains(kw_pathogen, case=False).sum())
+    category_counts["แร่ใยหิน (Asbestos)"] = int(combined_text.str.contains(kw_asbestos, case=False).sum())
+    category_counts["อับอากาศ (Confined Space)"] = int(combined_text.str.contains(kw_confined, case=False).sum())
+    category_counts["ตะกั่ว (Lead)"] = int(combined_text.str.contains(kw_lead, case=False).sum())
+    category_counts["ทั่วไป (อื่นๆ)"] = int((~combined_text.str.contains(all_hazards, case=False)).sum())
+
+# ส่ง category_counts เข้าไปยัง Sidebar เพื่อใช้แสดงตัวเลข
+enable_routing_click, factory_filter = render_sidebar(locations_dict, category_counts)
 
 # ==========================================
 # 5. กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
 # ==========================================
-if not df_factories.empty and factory_filter != "แสดงทั้งหมด":
-    # นำทุกคอลัมน์มาต่อกันเป็นข้อความเดียว เพื่อค้นหาแบบครอบคลุม ป้องกันตารางโดนลบคอลัมน์
-    df_search = df_factories.astype(str).fillna('')
-    combined_text = df_search.apply(lambda r: ' '.join(r.values), axis=1)
+# เปลี่ยนการตรวจสอบเป็น startswith แทน เผื่อมีตัวเลขต่อท้าย เช่น "ฝุ่น (PM2.5) (15)"
+if not df_factories.empty and not factory_filter.startswith("แสดงทั้งหมด"):
     
-    # 🌟 จัดกลุ่มคีย์เวิร์ดใหม่ (ตัดคำที่อาจซ้ำกับชื่อที่อยู่ออก เช่น 'ทราย' จากสันทราย, 'บ่อ' จากชื่อหมู่บ้าน)
-    kw_boiler = 'หม้อน้ำ|boiler'
-    kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
-    kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
-    kw_silica = 'ซิลิกา|silica|บ่อทราย|ท่าทราย|ดูดทราย|โม่หิน|กระจก|เซรามิก' 
-    kw_pathogen = 'เชื้อโรค|ชีวภาพ|ขยะติดเชื้อ|โรงพยาบาล|คลินิก'
-    kw_asbestos = 'แร่ใยหิน|asbestos|กระเบื้อง|ฉนวน|เบรก'
-    kw_confined = 'อับอากาศ|ไซโล|ถังขนาดใหญ่|อุโมงค์|confined'
-    kw_lead = 'ตะกั่ว|lead|แบตเตอรี่|หลอม|อิเล็กทรอนิกส์'
-    
-    if factory_filter == "หม้อน้ำ (Boiler)":
+    if factory_filter.startswith("หม้อน้ำ (Boiler)"):
         mask = combined_text.str.contains(kw_boiler, case=False)
-    elif factory_filter == "ฝุ่น (PM2.5)":
+    elif factory_filter.startswith("ฝุ่น (PM2.5)"):
         mask = combined_text.str.contains(kw_pm25, case=False)
-    elif factory_filter == "แอมโมเนีย (Ammonia/ห้องเย็น)":
+    elif factory_filter.startswith("แอมโมเนีย (Ammonia/ห้องเย็น)"):
         mask = combined_text.str.contains(kw_ammonia, case=False)
-    elif factory_filter == "ซิลิกา (Silica)":
+    elif factory_filter.startswith("ซิลิกา (Silica)"):
         mask = combined_text.str.contains(kw_silica, case=False)
-    elif factory_filter == "เชื้อโรค (Biohazard)":
+    elif factory_filter.startswith("เชื้อโรค (Biohazard)"):
         mask = combined_text.str.contains(kw_pathogen, case=False)
-    elif factory_filter == "แร่ใยหิน (Asbestos)":
+    elif factory_filter.startswith("แร่ใยหิน (Asbestos)"):
         mask = combined_text.str.contains(kw_asbestos, case=False)
-    elif factory_filter == "อับอากาศ (Confined Space)":
+    elif factory_filter.startswith("อับอากาศ (Confined Space)"):
         mask = combined_text.str.contains(kw_confined, case=False)
-    elif factory_filter == "ตะกั่ว (Lead)":
+    elif factory_filter.startswith("ตะกั่ว (Lead)"):
         mask = combined_text.str.contains(kw_lead, case=False)
-    elif factory_filter == "ทั่วไป (อื่นๆ)":
-        all_hazards = f"{kw_boiler}|{kw_pm25}|{kw_ammonia}|{kw_silica}|{kw_pathogen}|{kw_asbestos}|{kw_confined}|{kw_lead}"
+    elif factory_filter.startswith("ทั่วไป (อื่นๆ)"):
         mask = ~combined_text.str.contains(all_hazards, case=False)
     
     df_factories = df_factories[mask]
