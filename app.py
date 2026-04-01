@@ -129,14 +129,36 @@ if not df_factories.empty and factory_filter != "แสดงทั้งหม�
     # ดึงคอลัมน์กิจกรรมและความเสี่ยงมาใช้ค้นหา (index 4 และ 5)
     df_search = df_factories.fillna('')
     
+    # จัดกลุ่มคีย์เวิร์ดเพื่อง่ายต่อการแก้ไขและค้นหา
+    kw_boiler = 'หม้อน้ำ|boiler'
+    kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
+    kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
+    kw_silica = 'ซิลิกา|silica|ทราย|หิน|กระจก|เซรามิก'
+    kw_pathogen = 'เชื้อโรค|ชีวภาพ|ขยะติดเชื้อ|โรงพยาบาล|คลินิก'
+    kw_asbestos = 'แร่ใยหิน|asbestos|กระเบื้อง|ฉนวน|เบรก'
+    kw_confined = 'อับอากาศ|ไซโล|ถัง|บ่อ|อุโมงค์|confined'
+    kw_lead = 'ตะกั่ว|lead|แบตเตอรี่|หลอม|อิเล็กทรอนิกส์'
+    
     if factory_filter == "หม้อน้ำ (Boiler)":
-        mask = df_search.iloc[:, 4].str.contains('หม้อน้ำ|boiler', case=False) | df_search.iloc[:, 5].str.contains('หม้อน้ำ|boiler', case=False)
+        mask = df_search.iloc[:, 4].str.contains(kw_boiler, case=False) | df_search.iloc[:, 5].str.contains(kw_boiler, case=False)
     elif factory_filter == "ฝุ่น (PM2.5)":
-        mask = df_search.iloc[:, 4].str.contains('ฝุ่น|pm2.5|ควัน|แอสฟัลท์', case=False) | df_search.iloc[:, 5].str.contains('ฝุ่น|pm2.5|ควัน|แอสฟัลท์', case=False)
+        mask = df_search.iloc[:, 4].str.contains(kw_pm25, case=False) | df_search.iloc[:, 5].str.contains(kw_pm25, case=False)
     elif factory_filter == "แอมโมเนีย (Ammonia/ห้องเย็น)":
-        mask = df_search.iloc[:, 4].str.contains('แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False) | df_search.iloc[:, 5].str.contains('แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False)
+        mask = df_search.iloc[:, 4].str.contains(kw_ammonia, case=False) | df_search.iloc[:, 5].str.contains(kw_ammonia, case=False)
+    elif factory_filter == "ซิลิกา (Silica)":
+        mask = df_search.iloc[:, 4].str.contains(kw_silica, case=False) | df_search.iloc[:, 5].str.contains(kw_silica, case=False)
+    elif factory_filter == "เชื้อโรค (Biohazard)":
+        mask = df_search.iloc[:, 4].str.contains(kw_pathogen, case=False) | df_search.iloc[:, 5].str.contains(kw_pathogen, case=False)
+    elif factory_filter == "แร่ใยหิน (Asbestos)":
+        mask = df_search.iloc[:, 4].str.contains(kw_asbestos, case=False) | df_search.iloc[:, 5].str.contains(kw_asbestos, case=False)
+    elif factory_filter == "อับอากาศ (Confined Space)":
+        mask = df_search.iloc[:, 4].str.contains(kw_confined, case=False) | df_search.iloc[:, 5].str.contains(kw_confined, case=False)
+    elif factory_filter == "ตะกั่ว (Lead)":
+        mask = df_search.iloc[:, 4].str.contains(kw_lead, case=False) | df_search.iloc[:, 5].str.contains(kw_lead, case=False)
     elif factory_filter == "ทั่วไป (อื่นๆ)":
-        mask = ~(df_search.iloc[:, 4].str.contains('หม้อน้ำ|boiler|ฝุ่น|pm2.5|ควัน|แอสฟัลท์|แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False) | df_search.iloc[:, 5].str.contains('หม้อน้ำ|boiler|ฝุ่น|pm2.5|ควัน|แอสฟัลท์|แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False))
+        # กรณีโรงงานทั่วไป คือต้องไม่มีคีย์เวิร์ดความเสี่ยงทั้งหมดด้านบน
+        all_hazards = f"{kw_boiler}|{kw_pm25}|{kw_ammonia}|{kw_silica}|{kw_pathogen}|{kw_asbestos}|{kw_confined}|{kw_lead}"
+        mask = ~(df_search.iloc[:, 4].str.contains(all_hazards, case=False) | df_search.iloc[:, 5].str.contains(all_hazards, case=False))
     
     df_factories = df_factories[mask]
 
@@ -171,7 +193,6 @@ if map_data:
 
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
-    # ลบบรรทัด st.session_state.map_center = [clicked_point['lat'], ...] ออกเพื่อแก้ปัญหาแผนที่กระพริบ!
     
     if enable_routing_click:
         if len(st.session_state.map_clicks) >= 2:
