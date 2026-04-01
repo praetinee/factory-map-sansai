@@ -1,6 +1,6 @@
 import streamlit as st
 
-def render_sidebar(locations_dict):
+def render_sidebar(locations_dict, category_counts=None):
     st.sidebar.header("⚙️ การจัดการข้อมูล")
 
     # เพิ่มประสิทธิภาพปุ่มรีโหลด ให้ล้างความจำทุกอย่างแล้วโหลดใหม่ทั้งหมด
@@ -11,22 +11,32 @@ def render_sidebar(locations_dict):
 
     st.sidebar.markdown("---")
     
-    # เพิ่ม Dropdown สำหรับกรองกลุ่มโรงงาน (อัปเดตเพิ่มหมวดหมู่ใหม่)
+    # เพิ่ม Dropdown สำหรับกรองกลุ่มโรงงาน (อัปเดตเพิ่มหมวดหมู่ใหม่ และตัวเลข)
     st.sidebar.markdown("### 🏭 กรองประเภทโรงงาน")
+    
+    # ชื่อหมวดหมู่พื้นฐาน
+    base_categories = [
+        "แสดงทั้งหมด", 
+        "หม้อน้ำ (Boiler)", 
+        "ฝุ่น (PM2.5)", 
+        "แอมโมเนีย (Ammonia/ห้องเย็น)", 
+        "ซิลิกา (Silica)",
+        "เชื้อโรค (Biohazard)",
+        "แร่ใยหิน (Asbestos)",
+        "อับอากาศ (Confined Space)",
+        "ตะกั่ว (Lead)",
+        "ทั่วไป (อื่นๆ)"
+    ]
+    
+    # ถ้ามีการส่งตัวเลขนับมาด้วย ให้เอามาต่อท้ายชื่อหมวดหมู่
+    if category_counts:
+        options = [f"{cat} ({category_counts.get(cat, 0)})" for cat in base_categories]
+    else:
+        options = base_categories
+
     factory_filter = st.sidebar.selectbox(
         "เลือกกลุ่มโรงงานที่ต้องการแสดง:",
-        [
-            "แสดงทั้งหมด", 
-            "หม้อน้ำ (Boiler)", 
-            "ฝุ่น (PM2.5)", 
-            "แอมโมเนีย (Ammonia/ห้องเย็น)", 
-            "ซิลิกา (Silica)",
-            "เชื้อโรค (Biohazard)",
-            "แร่ใยหิน (Asbestos)",
-            "อับอากาศ (Confined Space)",
-            "ตะกั่ว (Lead)",
-            "ทั่วไป (อื่นๆ)"
-        ]
+        options
     )
 
     st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
