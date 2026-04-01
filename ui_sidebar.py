@@ -11,7 +11,12 @@ def render_sidebar(locations_dict):
 
     st.sidebar.markdown("---")
     
-    # หมายเหตุ: เอาคำนิยามระดับความเสี่ยง สีแดง, เหลือง, เขียว ออกจากตรงนี้ตามที่ต้องการแล้ว
+    # เพิ่ม Dropdown สำหรับกรองกลุ่มโรงงาน
+    st.sidebar.markdown("### 🏭 กรองประเภทโรงงาน")
+    factory_filter = st.sidebar.selectbox(
+        "เลือกกลุ่มโรงงานที่ต้องการแสดง:",
+        ["แสดงทั้งหมด", "หม้อน้ำ (Boiler)", "ฝุ่น (PM2.5)", "แอมโมเนีย (Ammonia/ห้องเย็น)", "ทั่วไป (อื่นๆ)"]
+    )
 
     st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
 
@@ -79,4 +84,5 @@ def render_sidebar(locations_dict):
         else:
             st.sidebar.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
 
-    return enable_routing_click
+    # อย่าลืมคืนค่า factory_filter ออกไปด้วย
+    return enable_routing_click, factory_filter
