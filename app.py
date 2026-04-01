@@ -121,7 +121,24 @@ if not df_factories.empty:
 # ==========================================
 # 4. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
-enable_routing_click = render_sidebar(locations_dict)
+# รับค่า factory_filter เข้ามาด้วย
+enable_routing_click, factory_filter = render_sidebar(locations_dict)
+
+# กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
+if not df_factories.empty and factory_filter != "แสดงทั้งหมด":
+    # ดึงคอลัมน์กิจกรรมและความเสี่ยงมาใช้ค้นหา (index 4 และ 5)
+    df_search = df_factories.fillna('')
+    
+    if factory_filter == "หม้อน้ำ (Boiler)":
+        mask = df_search.iloc[:, 4].str.contains('หม้อน้ำ|boiler', case=False) | df_search.iloc[:, 5].str.contains('หม้อน้ำ|boiler', case=False)
+    elif factory_filter == "ฝุ่น (PM2.5)":
+        mask = df_search.iloc[:, 4].str.contains('ฝุ่น|pm2.5|ควัน|แอสฟัลท์', case=False) | df_search.iloc[:, 5].str.contains('ฝุ่น|pm2.5|ควัน|แอสฟัลท์', case=False)
+    elif factory_filter == "แอมโมเนีย (Ammonia/ห้องเย็น)":
+        mask = df_search.iloc[:, 4].str.contains('แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False) | df_search.iloc[:, 5].str.contains('แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False)
+    elif factory_filter == "ทั่วไป (อื่นๆ)":
+        mask = ~(df_search.iloc[:, 4].str.contains('หม้อน้ำ|boiler|ฝุ่น|pm2.5|ควัน|แอสฟัลท์|แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False) | df_search.iloc[:, 5].str.contains('หม้อน้ำ|boiler|ฝุ่น|pm2.5|ควัน|แอสฟัลท์|แอมโมเนีย|น้ำแข็ง|ห้องเย็น', case=False))
+    
+    df_factories = df_factories[mask]
 
 # ==========================================
 # 5. โหลดข้อมูลแผนที่หลัก (Folium) และ Render
@@ -154,7 +171,7 @@ if map_data:
 
 if clicked_point and clicked_point != st.session_state.last_processed_click:
     st.session_state.last_processed_click = clicked_point
-    st.session_state.map_center = [clicked_point['lat'], clicked_point['lng']]
+    # ลบบรรทัด st.session_state.map_center = [clicked_point['lat'], ...] ออกเพื่อแก้ปัญหาแผนที่กระพริบ!
     
     if enable_routing_click:
         if len(st.session_state.map_clicks) >= 2:
