@@ -46,8 +46,8 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
                         activity = str(row.iloc[4]).replace('\n', '<br>') if pd.notna(row.iloc[4]) else 'ไม่ระบุ'
                         risk_details = str(row.iloc[5]).replace('\n', '<br>') if pd.notna(row.iloc[5]) else 'ไม่ระบุ'
 
-                        # ปรับให้เป็นสีเทาทั้งหมดโดยไม่มีเงื่อนไขความเสี่ยง
-                        marker_color, fill_color = '#7f8c8d', '#bdc3c7'
+                        # ปรับจุดโรงงานให้เป็นสีเหลืองตามที่ต้องการ
+                        marker_color, fill_color = '#e67e22', '#f1c40f'
 
                         # เอาข้อมูลความเสี่ยงออกจาก Popup ด้วย
                         popup_html = f"""
