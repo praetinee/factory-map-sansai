@@ -143,14 +143,14 @@ if not df_factories.empty and factory_filter != "แสดงทั้งหม�
     df_search = df_factories.astype(str).fillna('')
     combined_text = df_search.apply(lambda r: ' '.join(r.values), axis=1)
     
-    # จัดกลุ่มคีย์เวิร์ด
+    # 🌟 จัดกลุ่มคีย์เวิร์ดใหม่ (ตัดคำที่อาจซ้ำกับชื่อที่อยู่ออก เช่น 'ทราย' จากสันทราย, 'บ่อ' จากชื่อหมู่บ้าน)
     kw_boiler = 'หม้อน้ำ|boiler'
     kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
     kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
-    kw_silica = 'ซิลิกา|silica|ทราย|หิน|กระจก|เซรามิก'
+    kw_silica = 'ซิลิกา|silica|บ่อทราย|ท่าทราย|ดูดทราย|โม่หิน|กระจก|เซรามิก' 
     kw_pathogen = 'เชื้อโรค|ชีวภาพ|ขยะติดเชื้อ|โรงพยาบาล|คลินิก'
     kw_asbestos = 'แร่ใยหิน|asbestos|กระเบื้อง|ฉนวน|เบรก'
-    kw_confined = 'อับอากาศ|ไซโล|ถัง|บ่อ|อุโมงค์|confined'
+    kw_confined = 'อับอากาศ|ไซโล|ถังขนาดใหญ่|อุโมงค์|confined'
     kw_lead = 'ตะกั่ว|lead|แบตเตอรี่|หลอม|อิเล็กทรอนิกส์'
     
     if factory_filter == "หม้อน้ำ (Boiler)":
