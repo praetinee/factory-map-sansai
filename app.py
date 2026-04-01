@@ -84,52 +84,66 @@ if len(st.session_state.map_clicks) == 2 and st.session_state.route_data is None
 # ==========================================
 boundary_geo = load_boundary()
 gas_stations = load_gas_stations()
-        for el in gas_stations:
-            lat = el.get('lat') or (el.get('center', {}).get('lat'))
-            lon = el.get('lon') or (el.get('center', {}).get('lon'))
-            if lat and lon:
-                name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
-                brand = el.get('tags', {}).get('brand', '')
-                display_name = f"⛽ {name}" if name != 'ปั๊มน้ำมันทั่วไป' else f"⛽ {brand} (ปั๊มน้ำมัน)"
-                locations_dict[display_name] = (lat, lon)
+df_factories = load_factories()
 
-        if not df_factories.empty:
-            for idx, row in df_factories.iterrows():
-                try:
-                    # ค้นหาพิกัดแบบอัตโนมัติ ไม่ต้องฟิกซ์หมายเลขคอลัมน์อีกต่อไป
-                    lat, lon = None, None
-                    for val in row.values:
-                        val_str = str(val).strip().replace('"', '')
-                        if ',' in val_str:
-                            parts = val_str.split(',')
-                            if len(parts) == 2:
-                                try:
-                                    temp_lat, temp_lon = float(parts[0].strip()), float(parts[1].strip())
-                                    if 5 < temp_lat < 21 and 97 < temp_lon < 106: # เช็คว่าเป็นพิกัดในไทยเพื่อความชัวร์
-                                        lat, lon = temp_lat, temp_lon
-                                        break
-                                except ValueError:
-                                    pass
-                    
-                    if lat is not None and lon is not None:
-                        raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
-                        full_name = raw_name.split('\n')[0].replace('"', '')
-                        locations_dict[f"🏭 {full_name}"] = (lat, lon)
-                except Exception:
-                    pass
+locations_dict = {}
+
+hospitals = [
+    {"name": "รพ. สันทราย", "lat": 18.921246, "lon": 98.994203},
+    {"name": "รพ. นครพิงค์", "lat": 18.852547, "lon": 98.968389}
+]
+for h in hospitals:
+    locations_dict[f"🏥 {h['name']}"] = (h['lat'], h['lon'])
+
+for el in gas_stations:
+    lat = el.get('lat') or (el.get('center', {}).get('lat'))
+    lon = el.get('lon') or (el.get('center', {}).get('lon'))
+    if lat and lon:
+        name = el.get('tags', {}).get('name', 'ปั๊มน้ำมันทั่วไป')
+        brand = el.get('tags', {}).get('brand', '')
+        display_name = f"⛽ {name}" if name != 'ปั๊มน้ำมันทั่วไป' else f"⛽ {brand} (ปั๊มน้ำมัน)"
+        locations_dict[display_name] = (lat, lon)
+
+if not df_factories.empty:
+    for idx, row in df_factories.iterrows():
+        try:
+            # ค้นหาพิกัดแบบอัตโนมัติ ไม่ต้องฟิกซ์หมายเลขคอลัมน์
+            lat, lon = None, None
+            for val in row.values:
+                val_str = str(val).strip().replace('"', '')
+                if ',' in val_str:
+                    parts = val_str.split(',')
+                    if len(parts) == 2:
+                        try:
+                            temp_lat, temp_lon = float(parts[0].strip()), float(parts[1].strip())
+                            if 5 < temp_lat < 21 and 97 < temp_lon < 106: # พิกัดในไทย
+                                lat, lon = temp_lat, temp_lon
+                                break
+                        except ValueError:
+                            pass
+            
+            if lat is not None and lon is not None:
+                # พยายามหาชื่อโรงงาน (สมมติว่าอยู่คอลัมน์ที่ 1 หรือหาคอลัมน์แรกที่เป็น string)
+                raw_name = str(row.iloc[1]) if pd.notna(row.iloc[1]) else 'ไม่มีชื่อ'
+                full_name = raw_name.split('\n')[0].replace('"', '')
+                locations_dict[f"🏭 {full_name}"] = (lat, lon)
+        except Exception:
+            pass
 
 # ==========================================
 # 4. ส่วนแถบเมนูด้านข้าง (Sidebar)
 # ==========================================
-# รับค่า factory_filter เข้ามาด้วย
 enable_routing_click, factory_filter = render_sidebar(locations_dict)
 
-# กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
+# ==========================================
+# 5. กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
+# ==========================================
 if not df_factories.empty and factory_filter != "แสดงทั้งหมด":
-    # ดึงคอลัมน์กิจกรรมและความเสี่ยงมาใช้ค้นหา (index 4 และ 5)
-    df_search = df_factories.fillna('')
+    # นำทุกคอลัมน์มาต่อกันเป็นข้อความเดียว เพื่อค้นหาแบบครอบคลุม ป้องกันตารางโดนลบคอลัมน์
+    df_search = df_factories.astype(str).fillna('')
+    combined_text = df_search.apply(lambda r: ' '.join(r.values), axis=1)
     
-    # จัดกลุ่มคีย์เวิร์ดเพื่อง่ายต่อการแก้ไขและค้นหา
+    # จัดกลุ่มคีย์เวิร์ด
     kw_boiler = 'หม้อน้ำ|boiler'
     kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
     kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
@@ -140,30 +154,29 @@ if not df_factories.empty and factory_filter != "แสดงทั้งหม�
     kw_lead = 'ตะกั่ว|lead|แบตเตอรี่|หลอม|อิเล็กทรอนิกส์'
     
     if factory_filter == "หม้อน้ำ (Boiler)":
-        mask = df_search.iloc[:, 4].str.contains(kw_boiler, case=False) | df_search.iloc[:, 5].str.contains(kw_boiler, case=False)
+        mask = combined_text.str.contains(kw_boiler, case=False)
     elif factory_filter == "ฝุ่น (PM2.5)":
-        mask = df_search.iloc[:, 4].str.contains(kw_pm25, case=False) | df_search.iloc[:, 5].str.contains(kw_pm25, case=False)
+        mask = combined_text.str.contains(kw_pm25, case=False)
     elif factory_filter == "แอมโมเนีย (Ammonia/ห้องเย็น)":
-        mask = df_search.iloc[:, 4].str.contains(kw_ammonia, case=False) | df_search.iloc[:, 5].str.contains(kw_ammonia, case=False)
+        mask = combined_text.str.contains(kw_ammonia, case=False)
     elif factory_filter == "ซิลิกา (Silica)":
-        mask = df_search.iloc[:, 4].str.contains(kw_silica, case=False) | df_search.iloc[:, 5].str.contains(kw_silica, case=False)
+        mask = combined_text.str.contains(kw_silica, case=False)
     elif factory_filter == "เชื้อโรค (Biohazard)":
-        mask = df_search.iloc[:, 4].str.contains(kw_pathogen, case=False) | df_search.iloc[:, 5].str.contains(kw_pathogen, case=False)
+        mask = combined_text.str.contains(kw_pathogen, case=False)
     elif factory_filter == "แร่ใยหิน (Asbestos)":
-        mask = df_search.iloc[:, 4].str.contains(kw_asbestos, case=False) | df_search.iloc[:, 5].str.contains(kw_asbestos, case=False)
+        mask = combined_text.str.contains(kw_asbestos, case=False)
     elif factory_filter == "อับอากาศ (Confined Space)":
-        mask = df_search.iloc[:, 4].str.contains(kw_confined, case=False) | df_search.iloc[:, 5].str.contains(kw_confined, case=False)
+        mask = combined_text.str.contains(kw_confined, case=False)
     elif factory_filter == "ตะกั่ว (Lead)":
-        mask = df_search.iloc[:, 4].str.contains(kw_lead, case=False) | df_search.iloc[:, 5].str.contains(kw_lead, case=False)
+        mask = combined_text.str.contains(kw_lead, case=False)
     elif factory_filter == "ทั่วไป (อื่นๆ)":
-        # กรณีโรงงานทั่วไป คือต้องไม่มีคีย์เวิร์ดความเสี่ยงทั้งหมดด้านบน
         all_hazards = f"{kw_boiler}|{kw_pm25}|{kw_ammonia}|{kw_silica}|{kw_pathogen}|{kw_asbestos}|{kw_confined}|{kw_lead}"
-        mask = ~(df_search.iloc[:, 4].str.contains(all_hazards, case=False) | df_search.iloc[:, 5].str.contains(all_hazards, case=False))
+        mask = ~combined_text.str.contains(all_hazards, case=False)
     
     df_factories = df_factories[mask]
 
 # ==========================================
-# 5. โหลดข้อมูลแผนที่หลัก (Folium) และ Render
+# 6. โหลดข้อมูลแผนที่หลัก (Folium) และ Render
 # ==========================================
 m = generate_map(
     boundary_geo, 
