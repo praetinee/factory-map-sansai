@@ -11,11 +11,22 @@ def render_sidebar(locations_dict):
 
     st.sidebar.markdown("---")
     
-    # เพิ่ม Dropdown สำหรับกรองกลุ่มโรงงาน
+    # เพิ่ม Dropdown สำหรับกรองกลุ่มโรงงาน (อัปเดตเพิ่มหมวดหมู่ใหม่)
     st.sidebar.markdown("### 🏭 กรองประเภทโรงงาน")
     factory_filter = st.sidebar.selectbox(
         "เลือกกลุ่มโรงงานที่ต้องการแสดง:",
-        ["แสดงทั้งหมด", "หม้อน้ำ (Boiler)", "ฝุ่น (PM2.5)", "แอมโมเนีย (Ammonia/ห้องเย็น)", "ทั่วไป (อื่นๆ)"]
+        [
+            "แสดงทั้งหมด", 
+            "หม้อน้ำ (Boiler)", 
+            "ฝุ่น (PM2.5)", 
+            "แอมโมเนีย (Ammonia/ห้องเย็น)", 
+            "ซิลิกา (Silica)",
+            "เชื้อโรค (Biohazard)",
+            "แร่ใยหิน (Asbestos)",
+            "อับอากาศ (Confined Space)",
+            "ตะกั่ว (Lead)",
+            "ทั่วไป (อื่นๆ)"
+        ]
     )
 
     st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
@@ -84,5 +95,4 @@ def render_sidebar(locations_dict):
         else:
             st.sidebar.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
 
-    # อย่าลืมคืนค่า factory_filter ออกไปด้วย
     return enable_routing_click, factory_filter
