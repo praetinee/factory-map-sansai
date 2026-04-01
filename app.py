@@ -126,10 +126,10 @@ enable_routing_click, factory_filter = render_sidebar(locations_dict)
 
 # กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
 if not df_factories.empty and factory_filter != "แสดงทั้งหมด":
-    # ดึงคอลัมน์กิจกรรมและความเสี่ยงมาใช้ค้นหา (index 4 และ 5)
-    df_search = df_factories.fillna('')
+    # 🌟 แก้ไขตรงนี้: บังคับแปลงข้อมูลทุกคอลัมน์ให้เป็น String (ข้อความ) ก่อนค้นหา ป้องกัน Error
+    df_search = df_factories.astype(str).fillna('')
     
-    # จัดกลุ่มคีย์เวิร์ดเพื่อง่ายต่อการแก้ไขและค้นหา
+    # จัดกลุ่มคีย์เวิร์ด (หากใน Sheet ใช้คำอื่นที่ไม่ตรงกับพวกนี้ สามารถพิมพ์เพิ่มหลังเครื่องหมาย | ได้เลย)
     kw_boiler = 'หม้อน้ำ|boiler'
     kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
     kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
@@ -156,10 +156,10 @@ if not df_factories.empty and factory_filter != "แสดงทั้งหม�
     elif factory_filter == "ตะกั่ว (Lead)":
         mask = df_search.iloc[:, 4].str.contains(kw_lead, case=False) | df_search.iloc[:, 5].str.contains(kw_lead, case=False)
     elif factory_filter == "ทั่วไป (อื่นๆ)":
-        # กรณีโรงงานทั่วไป คือต้องไม่มีคีย์เวิร์ดความเสี่ยงทั้งหมดด้านบน
         all_hazards = f"{kw_boiler}|{kw_pm25}|{kw_ammonia}|{kw_silica}|{kw_pathogen}|{kw_asbestos}|{kw_confined}|{kw_lead}"
         mask = ~(df_search.iloc[:, 4].str.contains(all_hazards, case=False) | df_search.iloc[:, 5].str.contains(all_hazards, case=False))
     
+    # อัปเดตข้อมูลโรงงานให้เหลือเฉพาะอันที่ผ่านเงื่อนไข
     df_factories = df_factories[mask]
 
 # ==========================================
