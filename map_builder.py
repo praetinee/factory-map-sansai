@@ -148,6 +148,30 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
     fg_gas.add_to(m)
     fg_factory.add_to(m)
     fg_impact_zones.add_to(m) 
+    
+    # 🌟 6. เพิ่ม Widget เข็มทิศ (Compass) ที่มุมขวาล่างของแผนที่
+    compass_html = '''
+    <div style="position: fixed; bottom: 50px; right: 50px; width: 75px; height: 75px; z-index: 9999; pointer-events: none;">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="45" fill="rgba(255,255,255,0.85)" stroke="#555" stroke-width="2"/>
+            <!-- เข็มทิศฝั่งทิศใต้ -->
+            <path d="M50 50 L60 50 L50 90 L40 50 Z" fill="#cbd5e1"/>
+            <!-- เข็มทิศฝั่งทิศเหนือ -->
+            <path d="M50 10 L60 50 L40 50 Z" fill="#ef4444"/>
+            <!-- เงาให้เข็มทิศดูมีมิติ -->
+            <path d="M50 10 L60 50 L50 50 Z" fill="#dc2626"/>
+            <path d="M50 50 L60 50 L50 90 Z" fill="#94a3b8"/>
+            <!-- ตัวอักษร N S E W -->
+            <text x="50" y="24" font-family="'Sarabun', sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">N</text>
+            <text x="50" y="86" font-family="'Sarabun', sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">S</text>
+            <text x="84" y="54" font-family="'Sarabun', sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">E</text>
+            <text x="16" y="54" font-family="'Sarabun', sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">W</text>
+            <circle cx="50" cy="50" r="3" fill="#1e293b"/>
+        </svg>
+    </div>
+    '''
+    m.get_root().html.add_child(folium.Element(compass_html))
+    
     folium.LayerControl(collapsed=False).add_to(m)
     
     return m
