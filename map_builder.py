@@ -3,27 +3,6 @@ import pandas as pd
 import math
 from datetime import datetime
 
-# 🌟 ฟังก์ชันคณิตศาสตร์เสริมสำหรับหาระยะทางและมุม
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371.0 # รัศมีโลก
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    a = math.sin((lat2-lat1)/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2-lon1)/2)**2
-    return R * 2 * math.asin(math.sqrt(a))
-
-def calculate_bearing(lat1, lon1, lat2, lon2):
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dlon = lon2 - lon1
-    x = math.sin(dlon) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
-    return (math.degrees(math.atan2(x, y)) + 360) % 360
-
-def get_destination_point(lat, lon, distance_km, bearing_deg):
-    R = 6371.0
-    lat_rad, lon_rad, bearing_rad = map(math.radians, [lat, lon, bearing_deg])
-    lat_new = math.asin(math.sin(lat_rad)*math.cos(distance_km/R) + math.cos(lat_rad)*math.sin(distance_km/R)*math.cos(bearing_rad))
-    lon_new = lon_rad + math.atan2(math.sin(bearing_rad)*math.sin(distance_km/R)*math.cos(lat_rad), math.cos(distance_km/R)-math.sin(lat_rad)*math.sin(lat_new))
-    return math.degrees(lat_new), math.degrees(lon_new)
-
 # 🌟 ฟังก์ชันคำนวณหลักการกระจายตัว (Plume Physics) + ผลกระทบกลางคืน (Inversion)
 def calculate_hazard_zones(hazard_type, wind_speed, is_night=False):
     base_zones = {
@@ -162,47 +141,13 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
             plume_coords = get_plume_polygon(start_point[0], start_point[1], warm_radius / 1000.0, wind_dir, spread_angle)
             if plume_coords:
                 folium.Polygon(locations=plume_coords, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius:.0f}ม. มุม {spread_angle}°)").add_to(fg_impact_zones)
-            
-            # 🌟 วาดเส้นลูกศรทิศทางลม
-            arrow_end = get_destination_point(start_point[0], start_point[1], warm_radius/1000.0 * 0.9, wind_dir)
-            folium.PolyLine([start_point, arrow_end], color='#333', weight=2, dash_array='5, 5', opacity=0.8).add_to(fg_impact_zones)
-            icon_html = f"<div style='transform: rotate({wind_dir}deg); font-size: 20px; filter: drop-shadow(0px 0px 2px white);'>⬆️</div>"
-            folium.Marker(arrow_end, icon=folium.DivIcon(html=icon_html, icon_size=(20,20), icon_anchor=(10,10)), tooltip=f"ทิศทางลม ({wind_dir}°)").add_to(fg_impact_zones)
         else:
             folium.Circle(location=start_point, radius=warm_radius, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius:.0f}ม.)").add_to(fg_impact_zones)
 
         folium.Circle(location=start_point, radius=hot_radius, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.4, interactive=False, tooltip=f"Hot Zone ({hot_radius}ม.)").add_to(fg_impact_zones)
 
-        # 🌟 ระบบตรวจสอบเส้นทางขับรถ (Safe Route Warning)
-        route_warning = None
-        warning_loc = None
-        for r_lat, r_lon in rd['coords']:
-            dist_to_start = haversine(start_point[0], start_point[1], r_lat, r_lon) * 1000
-            if dist_to_start <= hot_radius:
-                route_warning = "HOT_ZONE"
-                warning_loc = [r_lat, r_lon]
-                break # หากเจออันตรายสุดให้หยุดหาทันที
-            elif dist_to_start <= warm_radius and route_warning != "HOT_ZONE":
-                if spread_angle >= 360:
-                    route_warning = "WARM_ZONE"
-                    warning_loc = [r_lat, r_lon]
-                else:
-                    angle_to_route = calculate_bearing(start_point[0], start_point[1], r_lat, r_lon)
-                    diff = abs((angle_to_route - wind_dir + 180) % 360 - 180)
-                    if diff <= spread_angle / 2:
-                        route_warning = "WARM_ZONE"
-                        warning_loc = [r_lat, r_lon]
-
-        # เลือกสีเส้นทางและวางหมุดเตือน
-        route_color = "#3388ff" # ปกติสีน้ำเงิน
-        if route_warning == "HOT_ZONE":
-            route_color = "#ef4444" # แดง
-            folium.Marker(warning_loc, icon=folium.Icon(color='red', icon='exclamation-triangle', prefix='fa'), tooltip="⚠️ อันตราย! เส้นทางตัดผ่าน Hot Zone").add_to(m)
-        elif route_warning == "WARM_ZONE":
-            route_color = "#f97316" # ส้ม
-            folium.Marker(warning_loc, icon=folium.Icon(color='orange', icon='exclamation-triangle', prefix='fa'), tooltip="⚠️ ระวัง! เส้นทางตัดผ่าน Warm Zone").add_to(m)
-
-        folium.PolyLine(rd['coords'], color=route_color, weight=6, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
+        # 🌟 วาดเส้นทางการเดินทางแบบปกติ
+        folium.PolyLine(rd['coords'], color="#3388ff", weight=5, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
         folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
         
         min_lat, max_lat = min(start_point[0], rd['end'][0]) - 0.045, max(start_point[0], rd['end'][0]) + 0.045
