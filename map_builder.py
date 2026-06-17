@@ -101,11 +101,12 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
                     activity = str(row.iloc[4]).replace('\n', '<br>') if len(row) > 4 and pd.notna(row.iloc[4]) else 'ไม่ระบุ'
                     risk_details = str(row.iloc[5]).replace('\n', '<br>') if len(row) > 5 and pd.notna(row.iloc[5]) else 'ไม่ระบุ'
 
-                    # 🌟 จัดสีหมุดตามระดับความเสี่ยง
+                    # 🌟 จัดสีหมุดตามระดับความเสี่ยง (เพิ่มคำภาษาอังกฤษเพื่อความแม่นยำ)
                     text_for_color = f"{activity} {risk_details}".lower()
-                    if any(w in text_for_color for w in ['แอมโมเนีย', 'เชื้อโรค', 'ระเบิด', 'ไวไฟ', 'สารเคมีรุนแรง']):
+                    
+                    if any(w in text_for_color for w in ['แอมโมเนีย', 'ammonia', 'เชื้อโรค', 'biohazard', 'ระเบิด', 'ไวไฟ', 'สารเคมีรุนแรง']):
                         marker_color, fill_color = '#b91c1c', '#ef4444' # แดง
-                    elif any(w in text_for_color for w in ['หม้อน้ำ', 'อับอากาศ', 'ตะกั่ว']):
+                    elif any(w in text_for_color for w in ['หม้อน้ำ', 'boiler', 'อับอากาศ', 'confined', 'ตะกั่ว', 'lead']):
                         marker_color, fill_color = '#c2410c', '#f97316' # ส้ม
                     else:
                         marker_color, fill_color = '#b45309', '#fbbf24' # เหลือง
