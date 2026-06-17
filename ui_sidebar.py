@@ -47,8 +47,20 @@ def render_sidebar(locations_dict, category_counts=None):
     ])
     
     wind_speed = st.sidebar.slider("ความเร็วลม (กม./ชม.)", 0, 50, 0, help="หากความเร็วลม > 0 โซนเฝ้าระวังจะเปลี่ยนเป็นรูปพัดตามทิศทางลม")
-    wind_dir = st.sidebar.slider("ทิศที่ลมพัดไป (องศา)", 0, 360, 90, help="ทิศที่สารเคมีกระจายไป (0=เหนือ, 90=ตะวันออก, 180=ใต้, 270=ตะวันตก)")
-
+    
+    # 🌟 เปลี่ยนจาก Slider องศา เป็น Dropdown เลือก 8 ทิศทางหลักเพื่อง่ายต่อการใช้งาน
+    wind_directions = {
+        "เหนือ (N)": 0,
+        "ตะวันออกเฉียงเหนือ (NE)": 45,
+        "ตะวันออก (E)": 90,
+        "ตะวันออกเฉียงใต้ (SE)": 135,
+        "ใต้ (S)": 180,
+        "ตะวันตกเฉียงใต้ (SW)": 225,
+        "ตะวันตก (W)": 270,
+        "ตะวันตกเฉียงเหนือ (NW)": 315
+    }
+    wind_dir_label = st.sidebar.selectbox("ทิศที่ลมพัดไป:", list(wind_directions.keys()), index=2) # ค่าเริ่มต้นคือ ตะวันออก (E)
+    wind_dir = wind_directions[wind_dir_label]
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 ประเมินและนำทาง")
