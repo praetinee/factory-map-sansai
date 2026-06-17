@@ -1,5 +1,19 @@
 import streamlit as st
 import requests
+import re
+
+# 🌟 ฟังก์ชันจัดการและดึงข้อมูลพิกัด GPS อัจฉริยะ ป้องกันการพิมพ์ผิด
+def parse_gps_input(text):
+    # ลบอักขระที่ไม่จำเป็นออก หาเฉพาะตัวเลข ทศนิยม และเครื่องหมายลบ
+    nums = re.findall(r'-?\d+\.\d+|-?\d+', text)
+    if len(nums) >= 2:
+        val1, val2 = float(nums[0]), float(nums[1])
+        # พิกัดประเทศไทย Lat ปกติอยู่ระหว่าง 5 ถึง 21, Lon ระหว่าง 97 ถึง 106
+        # ถ้าค่าแรกเยอะกว่า 50 แสดงว่าผู้ใช้น่าจะพิมพ์ Lon ก่อน Lat ให้สลับให้ถูก
+        if val1 > 50 and val2 < 50:
+            return val2, val1
+        return val1, val2
+    return None, None
 
 def fetch_realtime_weather(lat, lon):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
@@ -89,9 +103,10 @@ def render_sidebar(locations_dict, category_counts=None):
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 ประเมินและนำทาง")
 
+    # 🌟 เพิ่มโหมดที่ 4 สำหรับการระบุพิกัดโดยตรง
     mode = st.sidebar.radio(
         "โหมดการใช้งานแผนที่",
-        ["🔍 ดูข้อมูลปกติ", "🖱️ คลิกบนแผนที่", "📋 เลือกจากรายชื่อ"]
+        ["🔍 ดูข้อมูลปกติ", "🖱️ คลิกบนแผนที่", "📋 เลือกจากรายชื่อ", "📍 ระบุพิกัด GPS"]
     )
 
     enable_routing_click = False
@@ -123,6 +138,24 @@ def render_sidebar(locations_dict, category_counts=None):
                 st.session_state.map_center = [lat1, lon1] 
                 st.rerun()
 
+    # 🌟 โหมดใหม่: ระบุพิกัด GPS ตรงๆ
+    elif mode == "📍 ระบุพิกัด GPS":
+        st.sidebar.info("💡 ระบุพิกัด Latitude, Longitude")
+        coord_start = st.sidebar.text_input("จุดเริ่มต้น (จุดเกิดเหตุ):", placeholder="เช่น 18.9135, 99.0279")
+        coord_end = st.sidebar.text_input("จุดปลายทาง (ศูนย์อพยพ/รพ.):", placeholder="เช่น 18.9212, 98.9942")
+
+        if st.sidebar.button("🚀 คำนวณเส้นทาง", type="primary", use_container_width=True):
+            lat1, lon1 = parse_gps_input(coord_start)
+            lat2, lon2 = parse_gps_input(coord_end)
+
+            if lat1 is not None and lon1 is not None and lat2 is not None and lon2 is not None:
+                st.session_state.map_clicks = [(lat1, lon1), (lat2, lon2)]
+                st.session_state.route_data = None
+                st.session_state.map_center = [lat1, lon1]
+                st.rerun()
+            else:
+                st.sidebar.error("❌ รูปแบบพิกัดไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง (ตัวอย่าง: 18.9135, 99.0279)")
+
     if len(st.session_state.map_clicks) > 0 or st.session_state.route_data:
         if st.sidebar.button("🗑️ ล้างเส้นทาง (เริ่มใหม่)", use_container_width=True):
             st.session_state.map_clicks = []
@@ -134,10 +167,12 @@ def render_sidebar(locations_dict, category_counts=None):
         rd = st.session_state.route_data
         s_dist = rd['straight_dist']
         
-        # 🌟 นำเข้าฟังก์ชันคำนวณฟิสิกส์จาก map_builder เพื่อให้ข้อความตรงกับรูปวาด
         try:
             from map_builder import calculate_hazard_zones
-            hot_m, warm_m, spread_angle = calculate_hazard_zones(hazard_type, wind_speed)
+            from datetime import datetime
+            current_hour = datetime.now().hour
+            is_night = current_hour < 6 or current_hour >= 18
+            hot_m, warm_m, spread_angle = calculate_hazard_zones(hazard_type, wind_speed, is_night)
         except ImportError:
             hot_m, warm_m, spread_angle = 500, 2000, 360 # Fallback
             
