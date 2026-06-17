@@ -63,44 +63,6 @@ def render_sidebar(locations_dict, category_counts=None):
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🌪️ จำลองอุบัติภัยและทิศทางลม")
-    
-    # 🌟 เลือกระยะผลกระทบและทิศทางลม
-    hazard_type = st.sidebar.selectbox("ประเภทสารเคมี/อุบัติภัย:", [
-        "ค่าเริ่มต้น (ทั่วไป)", 
-        "แอมโมเนีย (ก๊าซพิษ)", 
-        "ไฟไหม้ / หม้อน้ำระเบิด", 
-        "ฝุ่นควัน / PM2.5"
-    ])
-    
-    # กำหนดพิกัดสำหรับใช้ดึงสภาพอากาศ
-    lat_for_weather, lon_for_weather = 18.9135, 99.0279 # ค่าเริ่มต้น (อ.สันทราย)
-    if 'map_clicks' in st.session_state and len(st.session_state.map_clicks) > 0:
-        lat_for_weather, lon_for_weather = st.session_state.map_clicks[0]
-
-    # เก็บค่าลมไว้ใน session_state เพื่อไม่ให้ข้อมูลหายเวลาโหลดใหม่
-    if 'wind_speed' not in st.session_state:
-        st.session_state.wind_speed = 0.0
-    if 'wind_dir_deg' not in st.session_state:
-        st.session_state.wind_dir_deg = 90.0
-
-    if st.sidebar.button("📡 ดึงข้อมูลลม ณ จุดเกิดเหตุ (Real-time)", help="ฟรี API จาก Open-Meteo ไม่ต้องใช้ Key", use_container_width=True):
-        with st.spinner("กำลังดึงข้อมูลจากกรมอุตุนิยมวิทยา (Open-Meteo)..."):
-            ws, wd = fetch_realtime_weather(lat_for_weather, lon_for_weather)
-            if ws is not None and wd is not None:
-                st.session_state.wind_speed = float(ws)
-                st.session_state.wind_dir_deg = float(wd)
-                st.sidebar.success(f"✔️ สำเร็จ! ความเร็ว {ws} กม./ชม. ทิศทาง {wd}°")
-            else:
-                st.sidebar.error("❌ ดึงข้อมูลไม่สำเร็จ กรุณากรอกตัวเลขเอง")
-
-    wind_speed = st.sidebar.number_input("ความเร็วลม (กม./ชม.)", min_value=0.0, max_value=200.0, value=float(st.session_state.wind_speed), step=1.0)
-    wind_dir = st.sidebar.number_input("ทิศที่ลมพัดไป (องศา 0-360)", min_value=0.0, max_value=360.0, value=float(st.session_state.wind_dir_deg), step=1.0)
-    
-    st.session_state.wind_speed = wind_speed
-    st.session_state.wind_dir_deg = wind_dir
-
-    st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 ประเมินและนำทาง")
 
     # 🌟 เพิ่มโหมดที่ 4 สำหรับการระบุพิกัดโดยตรง
@@ -162,6 +124,44 @@ def render_sidebar(locations_dict, category_counts=None):
             st.session_state.route_data = None
             st.session_state.last_processed_click = None
             st.rerun()
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🌪️ จำลองอุบัติภัยและทิศทางลม")
+    
+    # 🌟 เลือกระยะผลกระทบและทิศทางลม
+    hazard_type = st.sidebar.selectbox("ประเภทสารเคมี/อุบัติภัย:", [
+        "ค่าเริ่มต้น (ทั่วไป)", 
+        "แอมโมเนีย (ก๊าซพิษ)", 
+        "ไฟไหม้ / หม้อน้ำระเบิด", 
+        "ฝุ่นควัน / PM2.5"
+    ])
+    
+    # กำหนดพิกัดสำหรับใช้ดึงสภาพอากาศ
+    lat_for_weather, lon_for_weather = 18.9135, 99.0279 # ค่าเริ่มต้น (อ.สันทราย)
+    if 'map_clicks' in st.session_state and len(st.session_state.map_clicks) > 0:
+        lat_for_weather, lon_for_weather = st.session_state.map_clicks[0]
+
+    # เก็บค่าลมไว้ใน session_state เพื่อไม่ให้ข้อมูลหายเวลาโหลดใหม่
+    if 'wind_speed' not in st.session_state:
+        st.session_state.wind_speed = 0.0
+    if 'wind_dir_deg' not in st.session_state:
+        st.session_state.wind_dir_deg = 90.0
+
+    if st.sidebar.button("📡 ดึงข้อมูลลม ณ จุดเกิดเหตุ (Real-time)", help="ฟรี API จาก Open-Meteo ไม่ต้องใช้ Key", use_container_width=True):
+        with st.spinner("กำลังดึงข้อมูลจากกรมอุตุนิยมวิทยา (Open-Meteo)..."):
+            ws, wd = fetch_realtime_weather(lat_for_weather, lon_for_weather)
+            if ws is not None and wd is not None:
+                st.session_state.wind_speed = float(ws)
+                st.session_state.wind_dir_deg = float(wd)
+                st.sidebar.success(f"✔️ สำเร็จ! ความเร็ว {ws} กม./ชม. ทิศทาง {wd}°")
+            else:
+                st.sidebar.error("❌ ดึงข้อมูลไม่สำเร็จ กรุณากรอกตัวเลขเอง")
+
+    wind_speed = st.sidebar.number_input("ความเร็วลม (กม./ชม.)", min_value=0.0, max_value=200.0, value=float(st.session_state.wind_speed), step=1.0)
+    wind_dir = st.sidebar.number_input("ทิศที่ลมพัดไป (องศา 0-360)", min_value=0.0, max_value=360.0, value=float(st.session_state.wind_dir_deg), step=1.0)
+    
+    st.session_state.wind_speed = wind_speed
+    st.session_state.wind_dir_deg = wind_dir
 
     if st.session_state.route_data:
         rd = st.session_state.route_data
