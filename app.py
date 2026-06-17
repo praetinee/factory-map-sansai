@@ -8,18 +8,17 @@ from ui_sidebar import render_sidebar
 from map_builder import generate_map
 
 # ==========================================
-# 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Google Sans
+# 1. การตั้งค่าหน้าเว็บ Streamlit และ ฟอนต์ Sarabun
 # ==========================================
 st.set_page_config(page_title="แผนที่โรงงาน อ.สันทราย", layout="wide", page_icon="📍")
 
-# แทรก CSS เพื่อโหลดฟอนต์ แก้ปัญหาไม้เอกหาย และปรับให้ยืดหยุ่น (Responsive)
+# แทรก CSS เพื่อโหลดฟอนต์ Sarabun และปรับให้ยืดหยุ่น (Responsive)
 st.markdown("""
     <style>
-        @import url('https://fonts.cdnfonts.com/css/google-sans');
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
         
         html, body, [class*="st-"], p, h1, h2, h3, h4, h5, h6, span, label, div {
-            font-family: 'Google Sans', 'Noto Sans Thai', sans-serif !important;
+            font-family: 'Sarabun', sans-serif !important;
             line-height: 1.6 !important; 
         }
         h1, h2, h3 {
@@ -40,7 +39,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📍 แผนที่โรงงาน อ.สันทราย จ.เชียงใหม่")
-st.markdown("แสดงพิกัดโรงงาน พร้อมเลเยอร์ขอบเขต ปั๊มน้ำมัน และโรงพยาบาล")
+st.markdown("แสดงพิกัดโรงงาน พร้อมเลเยอร์ขอบเขต ปั๊มน้ำมัน โรงพยาบาล และการจำลองโซนผลกระทบตามทิศทางลม")
 
 # ==========================================
 # 2. จัดการ State สำหรับระบบคลิกแผนที่และการจดจำมุมมอง
@@ -147,7 +146,7 @@ category_counts = {
     "ทั่วไป (อื่นๆ)": 0
 }
 
-# 🌟 จัดกลุ่มคีย์เวิร์ด
+# จัดกลุ่มคีย์เวิร์ด
 kw_boiler = 'หม้อน้ำ|boiler'
 kw_pm25 = 'ฝุ่น|pm2.5|ควัน|แอสฟัลท์|โรงสี'
 kw_ammonia = 'แอมโมเนีย|น้ำแข็ง|ห้องเย็น|ammonia'
@@ -173,15 +172,13 @@ if not df_factories.empty:
     category_counts["ตะกั่ว (Lead)"] = int(combined_text.str.contains(kw_lead, case=False).sum())
     category_counts["ทั่วไป (อื่นๆ)"] = int((~combined_text.str.contains(all_hazards, case=False)).sum())
 
-# ส่ง category_counts เข้าไปยัง Sidebar เพื่อใช้แสดงตัวเลข
-enable_routing_click, factory_filter = render_sidebar(locations_dict, category_counts)
+# ส่ง category_counts เข้าไปยัง Sidebar เพื่อใช้แสดงตัวเลข และรับค่าพารามิเตอร์จำลองลมกลับมา
+enable_routing_click, factory_filter, hazard_type, wind_speed, wind_dir = render_sidebar(locations_dict, category_counts)
 
 # ==========================================
 # 5. กรองข้อมูลโรงงานตาม Dropdown ที่เลือก
 # ==========================================
-# เปลี่ยนการตรวจสอบเป็น startswith แทน เผื่อมีตัวเลขต่อท้าย เช่น "ฝุ่น (PM2.5) (15)"
 if not df_factories.empty and not factory_filter.startswith("แสดงทั้งหมด"):
-    
     if factory_filter.startswith("หม้อน้ำ (Boiler)"):
         mask = combined_text.str.contains(kw_boiler, case=False)
     elif factory_filter.startswith("ฝุ่น (PM2.5)"):
@@ -214,7 +211,10 @@ m = generate_map(
     st.session_state.map_center, 
     st.session_state.map_zoom,
     st.session_state.map_clicks,
-    st.session_state.route_data
+    st.session_state.route_data,
+    hazard_type,
+    wind_speed,
+    wind_dir
 )
 
 # Render แผนที่และดักจับ Event การคลิกเมาส์
