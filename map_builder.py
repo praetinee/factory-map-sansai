@@ -1,10 +1,31 @@
 import folium
 import pandas as pd
 import math
+from datetime import datetime
 
-# 🌟 ฟังก์ชันคำนวณหลักการกระจายตัว (Plume Physics) อิงตาม ERG Guidebook
-def calculate_hazard_zones(hazard_type, wind_speed):
-    # 1. รัศมีพื้นฐาน (Hot, Warm) ในหน่วยเมตร
+# 🌟 ฟังก์ชันคณิตศาสตร์เสริมสำหรับหาระยะทางและมุม
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371.0 # รัศมีโลก
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    a = math.sin((lat2-lat1)/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2-lon1)/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
+
+def calculate_bearing(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlon = lon2 - lon1
+    x = math.sin(dlon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+def get_destination_point(lat, lon, distance_km, bearing_deg):
+    R = 6371.0
+    lat_rad, lon_rad, bearing_rad = map(math.radians, [lat, lon, bearing_deg])
+    lat_new = math.asin(math.sin(lat_rad)*math.cos(distance_km/R) + math.cos(lat_rad)*math.sin(distance_km/R)*math.cos(bearing_rad))
+    lon_new = lon_rad + math.atan2(math.sin(bearing_rad)*math.sin(distance_km/R)*math.cos(lat_rad), math.cos(distance_km/R)-math.sin(lat_rad)*math.sin(lat_new))
+    return math.degrees(lat_new), math.degrees(lon_new)
+
+# 🌟 ฟังก์ชันคำนวณหลักการกระจายตัว (Plume Physics) + ผลกระทบกลางคืน (Inversion)
+def calculate_hazard_zones(hazard_type, wind_speed, is_night=False):
     base_zones = {
         "แอมโมเนีย (ก๊าซพิษ)": (500, 3000),
         "ไฟไหม้ / หม้อน้ำระเบิด": (100, 500),
@@ -13,52 +34,39 @@ def calculate_hazard_zones(hazard_type, wind_speed):
     }
     hot_m, warm_m = base_zones.get(hazard_type, (300, 1000))
     
-    # 2. ปรับระยะ Warm Zone และมุมกระจายตัว (Spread Angle) ตามหลักพลศาสตร์ของลม
+    # Inversion Effect: สารเคมีลอยต่ำไปได้ไกลขึ้นในเวลากลางคืน (เฉพาะก๊าซและฝุ่น)
+    if is_night and hazard_type in ["แอมโมเนีย (ก๊าซพิษ)", "ฝุ่นควัน / PM2.5"]:
+        warm_m *= 1.5 
+    
     if wind_speed <= 2:
-        spread_angle = 360 # ลมสงบ = กระจายทุกทิศทาง
+        spread_angle = 360
         actual_warm_m = warm_m
     elif wind_speed <= 10:
-        spread_angle = 90  # ลมอ่อน = มุมบานกว้าง 90 องศา, ถูกพัดไปไกลขึ้น 20%
+        spread_angle = 90
         actual_warm_m = warm_m * 1.2
     elif wind_speed <= 25:
-        spread_angle = 60  # ลมปานกลาง = มุม 60 องศา, ถูกพัดไปไกลขึ้น 50%
+        spread_angle = 60
         actual_warm_m = warm_m * 1.5
     else:
-        spread_angle = 30  # ลมแรง = พุ่งไกลเป็นเส้นแคบ 30 องศา, ถูกพัดไปไกลขึ้น 2 เท่า
+        spread_angle = 30
         actual_warm_m = warm_m * 2.0
         
     return hot_m, actual_warm_m, spread_angle
 
-# 🌟 ฟังก์ชันคำนวณพิกัดเพื่อวาดรูปทรงพัด (Plume) สำหรับจำลองทิศทางลม
 def get_plume_polygon(lat, lon, distance_km, wind_dir_deg, spread_angle_deg=60):
-    if spread_angle_deg >= 360:
-        return None
-        
-    R = 6371.0 # รัศมีโลก (กม.)
-    
-    # คำนวณขอบซ้ายและขอบขวาของรูปพัด
+    if spread_angle_deg >= 360: return None
+    R = 6371.0
     angle_left = (wind_dir_deg - spread_angle_deg / 2) % 360
     angle_right = (wind_dir_deg + spread_angle_deg / 2) % 360
-    
-    lat_rad = math.radians(lat)
-    lon_rad = math.radians(lon)
-    
+    lat_rad, lon_rad = math.radians(lat), math.radians(lon)
     polygon_coords = [[lat, lon]]
-    
-    # สร้างจุดเชื่อมต่อส่วนโค้งของพัด
     steps = 20
     for i in range(steps + 1):
-        angle = angle_left + (angle_right - angle_left) * (i / steps)
-        angle_rad = math.radians(angle)
-        
-        lat_new_rad = math.asin(math.sin(lat_rad) * math.cos(distance_km/R) + 
-                              math.cos(lat_rad) * math.sin(distance_km/R) * math.cos(angle_rad))
-        lon_new_rad = lon_rad + math.atan2(math.sin(angle_rad) * math.sin(distance_km/R) * math.cos(lat_rad), 
-                                         math.cos(distance_km/R) - math.sin(lat_rad) * math.sin(lat_new_rad))
-        
-        polygon_coords.append([math.degrees(lat_new_rad), math.degrees(lon_new_rad)])
-        
-    polygon_coords.append([lat, lon]) # ปิดรูปโพลีกอนกลับมาที่จุดศูนย์กลาง
+        angle_rad = math.radians(angle_left + (angle_right - angle_left) * (i / steps))
+        lat_new = math.asin(math.sin(lat_rad)*math.cos(distance_km/R) + math.cos(lat_rad)*math.sin(distance_km/R)*math.cos(angle_rad))
+        lon_new = lon_rad + math.atan2(math.sin(angle_rad)*math.sin(distance_km/R)*math.cos(lat_rad), math.cos(distance_km/R)-math.sin(lat_rad)*math.sin(lat_new))
+        polygon_coords.append([math.degrees(lat_new), math.degrees(lon_new)])
+    polygon_coords.append([lat, lon])
     return polygon_coords
 
 def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center, map_zoom, map_clicks, route_data, hazard_type="ค่าเริ่มต้น (ทั่วไป)", wind_speed=0, wind_dir=90):
@@ -70,8 +78,8 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
     fg_boundary = folium.FeatureGroup(name="🟥 ขอบเขต อ.สันทราย")
     fg_hospital = folium.FeatureGroup(name="🏥 โรงพยาบาล")
     fg_gas = folium.FeatureGroup(name="⛽ ปั๊มน้ำมัน")
-    fg_factory = folium.FeatureGroup(name="📍 โรงงาน")
-    fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ (อิงตามลมและสารเคมี)")
+    fg_factory = folium.FeatureGroup(name="📍 โรงงาน (แยกสีตามความเสี่ยง)")
+    fg_impact_zones = folium.FeatureGroup(name="🎯 รัศมีผลกระทบ")
 
     if boundary_geo:
         folium.GeoJson(boundary_geo, style_function=lambda x: {'color': 'red', 'weight': 4, 'fillColor': 'red', 'fillOpacity': 0.04}).add_to(fg_boundary)
@@ -114,7 +122,14 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
                     activity = str(row.iloc[4]).replace('\n', '<br>') if len(row) > 4 and pd.notna(row.iloc[4]) else 'ไม่ระบุ'
                     risk_details = str(row.iloc[5]).replace('\n', '<br>') if len(row) > 5 and pd.notna(row.iloc[5]) else 'ไม่ระบุ'
 
-                    marker_color, fill_color = '#e67e22', '#f1c40f'
+                    # 🌟 จัดสีหมุดตามระดับความเสี่ยง
+                    text_for_color = f"{activity} {risk_details}".lower()
+                    if any(w in text_for_color for w in ['แอมโมเนีย', 'เชื้อโรค', 'ระเบิด', 'ไวไฟ', 'สารเคมีรุนแรง']):
+                        marker_color, fill_color = '#b91c1c', '#ef4444' # แดง
+                    elif any(w in text_for_color for w in ['หม้อน้ำ', 'อับอากาศ', 'ตะกั่ว']):
+                        marker_color, fill_color = '#c2410c', '#f97316' # ส้ม
+                    else:
+                        marker_color, fill_color = '#b45309', '#fbbf24' # เหลือง
 
                     popup_html = f"""
                         <div style="min-width: 250px; font-family: 'Sarabun', sans-serif; color: #333;">
@@ -124,7 +139,7 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
                             <div style="margin-bottom: 8px;"><strong>⚠️ ความเสี่ยง:</strong><br>{risk_details}</div>
                         </div>
                     """
-                    folium.CircleMarker(location=[lat, lon], radius=8, color='white', weight=2, fill_color=fill_color, fill_opacity=0.95, popup=folium.Popup(popup_html, max_width=320)).add_to(fg_factory)
+                    folium.CircleMarker(location=[lat, lon], radius=8, color='white', weight=2, fill_color=fill_color, fill_opacity=0.9, popup=folium.Popup(popup_html, max_width=320)).add_to(fg_factory)
             except Exception:
                 continue
 
@@ -135,27 +150,59 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
         rd = route_data
         start_point = rd['start']
         
-        # 🌟 1. ดึงระยะรัศมีอ้างอิงจากคณิตศาสตร์ฟิสิกส์ ERG
-        hot_radius, warm_radius, spread_angle = calculate_hazard_zones(hazard_type, wind_speed)
+        # 🌟 ตรวจสอบเวลาปัจจุบันเพื่อหากลางวัน/กลางคืน
+        current_hour = datetime.now().hour
+        is_night = current_hour < 6 or current_hour >= 18
+        
+        hot_radius, warm_radius, spread_angle = calculate_hazard_zones(hazard_type, wind_speed, is_night)
             
-        # 🌟 2. วาด Cold Zone (เขียว - ระยะปลอดภัย) รัศมีกว้าง 2 เท่าของ Warm
         folium.Circle(location=start_point, radius=max(5000, warm_radius * 2), color='#059669', weight=1, fill=True, fill_color='#059669', fill_opacity=0.05, interactive=False, tooltip="Cold Zone (พื้นที่ปลอดภัย)").add_to(fg_impact_zones)
 
-        # 🌟 3. วาด Warm Zone (ส้ม - เฝ้าระวัง)
         if spread_angle < 360:
-            # ถ้ามีลมพัด ให้วาดเป็นรูปพัด (Plume) ไปตามทิศทางลม
             plume_coords = get_plume_polygon(start_point[0], start_point[1], warm_radius / 1000.0, wind_dir, spread_angle)
             if plume_coords:
                 folium.Polygon(locations=plume_coords, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius:.0f}ม. มุม {spread_angle}°)").add_to(fg_impact_zones)
+            
+            # 🌟 วาดเส้นลูกศรทิศทางลม
+            arrow_end = get_destination_point(start_point[0], start_point[1], warm_radius/1000.0 * 0.9, wind_dir)
+            folium.PolyLine([start_point, arrow_end], color='#333', weight=2, dash_array='5, 5', opacity=0.8).add_to(fg_impact_zones)
+            icon_html = f"<div style='transform: rotate({wind_dir}deg); font-size: 20px; filter: drop-shadow(0px 0px 2px white);'>⬆️</div>"
+            folium.Marker(arrow_end, icon=folium.DivIcon(html=icon_html, icon_size=(20,20), icon_anchor=(10,10)), tooltip=f"ทิศทางลม ({wind_dir}°)").add_to(fg_impact_zones)
         else:
-            # ถ้าลมสงบ (0-2 กม./ชม.) วาดเป็นวงกลมปกติ
             folium.Circle(location=start_point, radius=warm_radius, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius:.0f}ม.)").add_to(fg_impact_zones)
 
-        # 🌟 4. วาด Hot Zone (แดง - อันตรายสูงสุด) เป็นวงกลมเสมอเพราะเป็นระยะตัดแยกเบื้องต้น
         folium.Circle(location=start_point, radius=hot_radius, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.4, interactive=False, tooltip=f"Hot Zone ({hot_radius}ม.)").add_to(fg_impact_zones)
 
-        # 🌟 5. วาดเส้นทางการเดินทาง
-        folium.PolyLine(rd['coords'], color="#3388ff", weight=5, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
+        # 🌟 ระบบตรวจสอบเส้นทางขับรถ (Safe Route Warning)
+        route_warning = None
+        warning_loc = None
+        for r_lat, r_lon in rd['coords']:
+            dist_to_start = haversine(start_point[0], start_point[1], r_lat, r_lon) * 1000
+            if dist_to_start <= hot_radius:
+                route_warning = "HOT_ZONE"
+                warning_loc = [r_lat, r_lon]
+                break # หากเจออันตรายสุดให้หยุดหาทันที
+            elif dist_to_start <= warm_radius and route_warning != "HOT_ZONE":
+                if spread_angle >= 360:
+                    route_warning = "WARM_ZONE"
+                    warning_loc = [r_lat, r_lon]
+                else:
+                    angle_to_route = calculate_bearing(start_point[0], start_point[1], r_lat, r_lon)
+                    diff = abs((angle_to_route - wind_dir + 180) % 360 - 180)
+                    if diff <= spread_angle / 2:
+                        route_warning = "WARM_ZONE"
+                        warning_loc = [r_lat, r_lon]
+
+        # เลือกสีเส้นทางและวางหมุดเตือน
+        route_color = "#3388ff" # ปกติสีน้ำเงิน
+        if route_warning == "HOT_ZONE":
+            route_color = "#ef4444" # แดง
+            folium.Marker(warning_loc, icon=folium.Icon(color='red', icon='exclamation-triangle', prefix='fa'), tooltip="⚠️ อันตราย! เส้นทางตัดผ่าน Hot Zone").add_to(m)
+        elif route_warning == "WARM_ZONE":
+            route_color = "#f97316" # ส้ม
+            folium.Marker(warning_loc, icon=folium.Icon(color='orange', icon='exclamation-triangle', prefix='fa'), tooltip="⚠️ ระวัง! เส้นทางตัดผ่าน Warm Zone").add_to(m)
+
+        folium.PolyLine(rd['coords'], color=route_color, weight=6, opacity=0.8, tooltip=f"ระยะทางขับรถ {rd['dist']:.1f} กม.").add_to(m)
         folium.Marker(rd['end'], icon=folium.Icon(color='green', icon='flag', prefix='fa'), tooltip="จุดปลายทาง (End)").add_to(m)
         
         min_lat, max_lat = min(start_point[0], rd['end'][0]) - 0.045, max(start_point[0], rd['end'][0]) + 0.045
@@ -168,7 +215,6 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
     fg_factory.add_to(m)
     fg_impact_zones.add_to(m) 
     
-    # 🌟 6. เพิ่ม Widget เข็มทิศ (Compass) ที่มุมขวาล่างของแผนที่
     compass_html = '''
     <div style="position: fixed; bottom: 50px; right: 50px; width: 75px; height: 75px; z-index: 9999; pointer-events: none;">
         <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
