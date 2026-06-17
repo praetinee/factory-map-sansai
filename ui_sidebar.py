@@ -180,9 +180,9 @@ def render_sidebar(locations_dict, category_counts=None):
         st.sidebar.markdown("#### 🚗 สรุปการเดินทาง")
         col1, col2 = st.sidebar.columns(2)
         
-        # 🌟 แก้ไข: ใช้ HTML Markdown เพื่อลดขนาดตัวอักษร ไม่ให้ล้นกรอบจนแสดง ...
-        col1.markdown(f"**ระยะทางขับรถ**<br/><span style='font-size: 1.25rem; font-weight: bold; color: #1e293b;'>{rd['dist']:.2f} กม.</span>", unsafe_allow_html=True)
-        col2.markdown(f"**เวลาเดินทาง**<br/><span style='font-size: 1.25rem; font-weight: bold; color: #1e293b;'>~ {rd['dur']:.0f} นาที</span>", unsafe_allow_html=True)
+        # 🌟 แก้ไข: ลบการกำหนดสีตายตัวออก เพื่อให้รองรับ Dark Mode / Light Mode อัตโนมัติ
+        col1.markdown(f"**ระยะทางขับรถ**<br/><span style='font-size: 1.25rem; font-weight: bold;'>{rd['dist']:.2f} กม.</span>", unsafe_allow_html=True)
+        col2.markdown(f"**เวลาเดินทาง**<br/><span style='font-size: 1.25rem; font-weight: bold;'>~ {rd['dur']:.0f} นาที</span>", unsafe_allow_html=True)
         
         st.sidebar.markdown("---")
         st.sidebar.markdown("#### 🎯 ระดับความปลอดภัย (อ้างอิงจุดหมาย)")
