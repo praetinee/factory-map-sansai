@@ -3,7 +3,6 @@ import streamlit as st
 def render_sidebar(locations_dict, category_counts=None):
     st.sidebar.header("⚙️ การจัดการข้อมูล")
 
-    # เพิ่มประสิทธิภาพปุ่มรีโหลด ให้ล้างความจำทุกอย่างแล้วโหลดใหม่ทั้งหมด
     if st.sidebar.button("🔄 รีโหลดข้อมูลใหม่ทั้งหมด", use_container_width=True):
         st.cache_data.clear()
         st.sidebar.success("ล้างความจำและอัปเดตข้อมูลใหม่ทั้งหมดแล้ว!")
@@ -11,10 +10,8 @@ def render_sidebar(locations_dict, category_counts=None):
 
     st.sidebar.markdown("---")
     
-    # เพิ่ม Dropdown สำหรับกรองกลุ่มโรงงาน (อัปเดตเพิ่มหมวดหมู่ใหม่ และตัวเลข)
     st.sidebar.markdown("### 🏭 กรองประเภทโรงงาน")
     
-    # ชื่อหมวดหมู่พื้นฐาน
     base_categories = [
         "แสดงทั้งหมด", 
         "หม้อน้ำ (Boiler)", 
@@ -28,7 +25,6 @@ def render_sidebar(locations_dict, category_counts=None):
         "ทั่วไป (อื่นๆ)"
     ]
     
-    # ถ้ามีการส่งตัวเลขนับมาด้วย ให้เอามาต่อท้ายชื่อหมวดหมู่
     if category_counts:
         options = [f"{cat} ({category_counts.get(cat, 0)})" for cat in base_categories]
     else:
@@ -39,9 +35,24 @@ def render_sidebar(locations_dict, category_counts=None):
         options
     )
 
-    st.sidebar.markdown("### 🎯 ประเมินอุบัติภัยและนำทาง")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🌪️ จำลองอุบัติภัยและทิศทางลม")
+    
+    # 🌟 เลือกระยะผลกระทบและทิศทางลม
+    hazard_type = st.sidebar.selectbox("ประเภทสารเคมี/อุบัติภัย:", [
+        "ค่าเริ่มต้น (ทั่วไป)", 
+        "แอมโมเนีย (ก๊าซพิษ)", 
+        "ไฟไหม้ / หม้อน้ำระเบิด", 
+        "ฝุ่นควัน / PM2.5"
+    ])
+    
+    wind_speed = st.sidebar.slider("ความเร็วลม (กม./ชม.)", 0, 50, 0, help="หากความเร็วลม > 0 โซนเฝ้าระวังจะเปลี่ยนเป็นรูปพัดตามทิศทางลม")
+    wind_dir = st.sidebar.slider("ทิศที่ลมพัดไป (องศา)", 0, 360, 90, help="ทิศที่สารเคมีกระจายไป (0=เหนือ, 90=ตะวันออก, 180=ใต้, 270=ตะวันตก)")
 
-    # วิชเก็ตตัวเลือกโหมดการใช้งาน
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎯 ประเมินและนำทาง")
+
     mode = st.sidebar.radio(
         "โหมดการใช้งานแผนที่",
         ["🔍 ดูข้อมูลปกติ", "🖱️ คลิกบนแผนที่", "📋 เลือกจากรายชื่อ"]
@@ -49,9 +60,8 @@ def render_sidebar(locations_dict, category_counts=None):
 
     enable_routing_click = False
 
-    # การแสดงผลตามโหมดที่เลือก
     if mode == "🔍 ดูข้อมูลปกติ":
-        st.sidebar.info("💡 **สถานะ: ดูข้อมูลปกติ** \nคลิกที่หมุดบนแผนที่เพื่อดูรายละเอียดโรงงาน/ปั๊มน้ำมัน การคลิกจะไม่ถูกนำไปคำนวณเส้นทาง")
+        st.sidebar.info("💡 **สถานะ: ดูข้อมูลปกติ** \nคลิกที่หมุดบนแผนที่เพื่อดูรายละเอียดโรงงาน การคลิกจะไม่ถูกนำไปคำนวณเส้นทาง")
 
     elif mode == "🖱️ คลิกบนแผนที่":
         enable_routing_click = True
@@ -88,6 +98,16 @@ def render_sidebar(locations_dict, category_counts=None):
         rd = st.session_state.route_data
         s_dist = rd['straight_dist']
         
+        # 🌟 กำหนดระยะตามประเภทที่ผู้ใช้เลือกใน Sidebar 
+        if hazard_type == "แอมโมเนีย (ก๊าซพิษ)":
+            hot_m, warm_m = 1000, 3000
+        elif hazard_type == "ไฟไหม้ / หม้อน้ำระเบิด":
+            hot_m, warm_m = 200, 500
+        elif hazard_type == "ฝุ่นควัน / PM2.5":
+            hot_m, warm_m = 500, 2000
+        else:
+            hot_m, warm_m = 500, 2000
+            
         st.sidebar.markdown("---")
         st.sidebar.markdown("#### 🚗 สรุปการเดินทาง")
         col1, col2 = st.sidebar.columns(2)
@@ -95,14 +115,16 @@ def render_sidebar(locations_dict, category_counts=None):
         col2.metric("เวลาเดินทาง", f"~ {rd['dur']:.0f} นาที")
         
         st.sidebar.markdown("---")
-        st.sidebar.markdown("#### 🎯 รัศมีผลกระทบ")
-        st.sidebar.caption(f"ระยะกระจัด (เส้นตรง): {s_dist:.2f} กม.")
+        st.sidebar.markdown("#### 🎯 ระดับความปลอดภัย (อ้างอิงจุดหมาย)")
+        st.sidebar.caption(f"ระยะกระจัดจากจุดเกิดเหตุ: {s_dist:.2f} กม.")
+        if wind_speed > 0:
+            st.sidebar.caption("*(กรุณาตรวจสอบแผนที่ประกอบ เนื่องจากมีการกระจายตัวตามทิศทางลม)*")
         
-        if s_dist <= 0.5:
-            st.sidebar.error("**🔴 โซนอันตราย (Hot Zone) < 500ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
-        elif s_dist <= 2.0:
-            st.sidebar.warning("**🟡 โซนเฝ้าระวัง (Warm Zone) < 2กม.**\n\nอาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)")
+        if s_dist <= (hot_m / 1000.0):
+            st.sidebar.error(f"**🔴 โซนอันตราย (Hot Zone) < {hot_m}ม.**\n\nอันตรายถึงชีวิต ต้องสวม PPE ระดับสูงสุดและอพยพทันที")
+        elif s_dist <= (warm_m / 1000.0):
+            st.sidebar.warning(f"**🟡 โซนเฝ้าระวัง (Warm Zone) < {warm_m}ม.**\n\nอาจได้รับผลกระทบจากกลุ่มควัน/ก๊าซพิษ เตรียมพร้อมอพยพหรือหลบในอาคาร (Shelter-in-place)")
         else:
-            st.sidebar.success("**🟢 โซนปลอดภัย (Cold Zone) > 2กม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command) หรือจุดปฐมพยาบาล")
+            st.sidebar.success(f"**🟢 โซนปลอดภัย (Cold Zone) > {warm_m}ม.**\n\nอยู่นอกรัศมีผลกระทบรุนแรง เหมาะสำหรับตั้งศูนย์บัญชาการ (Incident Command)")
 
-    return enable_routing_click, factory_filter
+    return enable_routing_click, factory_filter, hazard_type, wind_speed, wind_dir
