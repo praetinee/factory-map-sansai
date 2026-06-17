@@ -2,8 +2,38 @@ import folium
 import pandas as pd
 import math
 
+# 🌟 ฟังก์ชันคำนวณหลักการกระจายตัว (Plume Physics) อิงตาม ERG Guidebook
+def calculate_hazard_zones(hazard_type, wind_speed):
+    # 1. รัศมีพื้นฐาน (Hot, Warm) ในหน่วยเมตร
+    base_zones = {
+        "แอมโมเนีย (ก๊าซพิษ)": (500, 3000),
+        "ไฟไหม้ / หม้อน้ำระเบิด": (100, 500),
+        "ฝุ่นควัน / PM2.5": (200, 1500),
+        "ค่าเริ่มต้น (ทั่วไป)": (300, 1000)
+    }
+    hot_m, warm_m = base_zones.get(hazard_type, (300, 1000))
+    
+    # 2. ปรับระยะ Warm Zone และมุมกระจายตัว (Spread Angle) ตามหลักพลศาสตร์ของลม
+    if wind_speed <= 2:
+        spread_angle = 360 # ลมสงบ = กระจายทุกทิศทาง
+        actual_warm_m = warm_m
+    elif wind_speed <= 10:
+        spread_angle = 90  # ลมอ่อน = มุมบานกว้าง 90 องศา, ถูกพัดไปไกลขึ้น 20%
+        actual_warm_m = warm_m * 1.2
+    elif wind_speed <= 25:
+        spread_angle = 60  # ลมปานกลาง = มุม 60 องศา, ถูกพัดไปไกลขึ้น 50%
+        actual_warm_m = warm_m * 1.5
+    else:
+        spread_angle = 30  # ลมแรง = พุ่งไกลเป็นเส้นแคบ 30 องศา, ถูกพัดไปไกลขึ้น 2 เท่า
+        actual_warm_m = warm_m * 2.0
+        
+    return hot_m, actual_warm_m, spread_angle
+
 # 🌟 ฟังก์ชันคำนวณพิกัดเพื่อวาดรูปทรงพัด (Plume) สำหรับจำลองทิศทางลม
 def get_plume_polygon(lat, lon, distance_km, wind_dir_deg, spread_angle_deg=60):
+    if spread_angle_deg >= 360:
+        return None
+        
     R = 6371.0 # รัศมีโลก (กม.)
     
     # คำนวณขอบซ้ายและขอบขวาของรูปพัด
@@ -86,7 +116,6 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
 
                     marker_color, fill_color = '#e67e22', '#f1c40f'
 
-                    # 🌟 เปลี่ยนฟอนต์ใน Popup เป็น Sarabun
                     popup_html = f"""
                         <div style="min-width: 250px; font-family: 'Sarabun', sans-serif; color: #333;">
                             <h4 style="color: {marker_color}; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 0;">🏭 {full_name}</h4>
@@ -106,31 +135,21 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
         rd = route_data
         start_point = rd['start']
         
-        # 🌟 1. ดึงระยะรัศมีอ้างอิงจากตัวเลือกสารเคมี
-        if hazard_type == "แอมโมเนีย (ก๊าซพิษ)":
-            hot_radius = 1000
-            warm_radius = 3000
-        elif hazard_type == "ไฟไหม้ / หม้อน้ำระเบิด":
-            hot_radius = 200
-            warm_radius = 500
-        elif hazard_type == "ฝุ่นควัน / PM2.5":
-            hot_radius = 500
-            warm_radius = 2000
-        else:
-            hot_radius = 500
-            warm_radius = 2000
+        # 🌟 1. ดึงระยะรัศมีอ้างอิงจากคณิตศาสตร์ฟิสิกส์ ERG
+        hot_radius, warm_radius, spread_angle = calculate_hazard_zones(hazard_type, wind_speed)
             
         # 🌟 2. วาด Cold Zone (เขียว - ระยะปลอดภัย) รัศมีกว้าง 2 เท่าของ Warm
         folium.Circle(location=start_point, radius=max(5000, warm_radius * 2), color='#059669', weight=1, fill=True, fill_color='#059669', fill_opacity=0.05, interactive=False, tooltip="Cold Zone (พื้นที่ปลอดภัย)").add_to(fg_impact_zones)
 
         # 🌟 3. วาด Warm Zone (ส้ม - เฝ้าระวัง)
-        if wind_speed > 0:
+        if spread_angle < 360:
             # ถ้ามีลมพัด ให้วาดเป็นรูปพัด (Plume) ไปตามทิศทางลม
-            plume_coords = get_plume_polygon(start_point[0], start_point[1], warm_radius / 1000.0, wind_dir)
-            folium.Polygon(locations=plume_coords, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius}ม. กระจายตามทิศลม)").add_to(fg_impact_zones)
+            plume_coords = get_plume_polygon(start_point[0], start_point[1], warm_radius / 1000.0, wind_dir, spread_angle)
+            if plume_coords:
+                folium.Polygon(locations=plume_coords, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius:.0f}ม. มุม {spread_angle}°)").add_to(fg_impact_zones)
         else:
-            # ถ้าลมสงบ (0) วาดเป็นวงกลมปกติ
-            folium.Circle(location=start_point, radius=warm_radius, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius}ม.)").add_to(fg_impact_zones)
+            # ถ้าลมสงบ (0-2 กม./ชม.) วาดเป็นวงกลมปกติ
+            folium.Circle(location=start_point, radius=warm_radius, color='#d97706', weight=2, fill=True, fill_color='#d97706', fill_opacity=0.3, interactive=False, tooltip=f"Warm Zone ({warm_radius:.0f}ม.)").add_to(fg_impact_zones)
 
         # 🌟 4. วาด Hot Zone (แดง - อันตรายสูงสุด) เป็นวงกลมเสมอเพราะเป็นระยะตัดแยกเบื้องต้น
         folium.Circle(location=start_point, radius=hot_radius, color='#dc2626', weight=3, fill=True, fill_color='#dc2626', fill_opacity=0.4, interactive=False, tooltip=f"Hot Zone ({hot_radius}ม.)").add_to(fg_impact_zones)
@@ -154,14 +173,10 @@ def generate_map(boundary_geo, hospitals, gas_stations, df_factories, map_center
     <div style="position: fixed; bottom: 50px; right: 50px; width: 75px; height: 75px; z-index: 9999; pointer-events: none;">
         <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
             <circle cx="50" cy="50" r="45" fill="rgba(255,255,255,0.85)" stroke="#555" stroke-width="2"/>
-            <!-- เข็มทิศฝั่งทิศใต้ -->
             <path d="M50 50 L60 50 L50 90 L40 50 Z" fill="#cbd5e1"/>
-            <!-- เข็มทิศฝั่งทิศเหนือ -->
             <path d="M50 10 L60 50 L40 50 Z" fill="#ef4444"/>
-            <!-- เงาให้เข็มทิศดูมีมิติ -->
             <path d="M50 10 L60 50 L50 50 Z" fill="#dc2626"/>
             <path d="M50 50 L60 50 L50 90 Z" fill="#94a3b8"/>
-            <!-- ตัวอักษร N S E W -->
             <text x="50" y="24" font-family="'Sarabun', sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">N</text>
             <text x="50" y="86" font-family="'Sarabun', sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">S</text>
             <text x="84" y="54" font-family="'Sarabun', sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">E</text>
