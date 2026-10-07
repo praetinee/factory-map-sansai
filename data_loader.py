@@ -23,6 +23,7 @@ def load_boundary():
     return None
 
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def load_gas_stations():
     query = """[out:json][timeout:30];
     area["name"~"สันทราย"]["admin_level"="6"]->.searchArea;
@@ -32,19 +33,31 @@ def load_gas_stations():
       relation["amenity"="fuel"](area.searchArea);
     );
     out center;"""
-    # เปลี่ยนไปใช้เซิร์ฟเวอร์ทางเลือกของ Kumi Systems
-    url = 'https://overpass.kumi.systems/api/interpreter'
-    try:
-        # สำคัญมาก: ต้องระบุอีเมลติดต่อเพื่อป้องกันเซิร์ฟเวอร์บล็อกคำขอ (เปลี่ยนเป็นอีเมลของคุณเอง)
-        headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (contact_email@example.com)'}
-        r = requests.post(url, data=query.encode('utf-8'), headers=headers, timeout=30)
-        if r.status_code == 200:
-            data = r.json()
-            return data.get('elements', [])
-        else:
-            st.sidebar.error(f"⚠️ โหลดข้อมูลปั๊มน้ำมันไม่สำเร็จ (API Status: {r.status_code})")
-    except Exception as e:
-        st.sidebar.error(f"⚠️ เกิดข้อผิดพลาดในการโหลดปั๊มน้ำมัน: {e}")
+    
+    # รวมรายชื่อเซิร์ฟเวอร์ Overpass API จากหลายๆ ประเทศ เพื่อทำระบบ Fallback
+    endpoints = [
+        'https://overpass.openstreetmap.fr/api/interpreter', # เซิร์ฟเวอร์ฝรั่งเศส (มีความเสถียรสูง)
+        'https://overpass.osm.ch/api/interpreter',           # เซิร์ฟเวอร์สวิตเซอร์แลนด์
+        'https://overpass-api.de/api/interpreter',           # เซิร์ฟเวอร์หลัก (เผื่อกลับมาใช้งานได้)
+        'https://lz4.overpass-api.de/api/interpreter'        # เซิร์ฟเวอร์สำรอง
+    ]
+    
+    # ควรระบุอีเมลเพื่อให้เซิร์ฟเวอร์รู้ว่าใครเป็นคนดึงข้อมูล (ลดโอกาสถูกบล็อก)
+    headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (praetinee@example.com)'}
+    
+    # วนลูปทดลองเชื่อมต่อทีละเซิร์ฟเวอร์
+    for url in endpoints:
+        try:
+            r = requests.post(url, data=query.encode('utf-8'), headers=headers, timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                return data.get('elements', [])
+        except Exception:
+            # หากเซิร์ฟเวอร์นี้ล่มหรือไม่ตอบสนอง ให้ข้ามไปลองเซิร์ฟเวอร์ถัดไปเงียบๆ
+            continue
+            
+    # ถ้าลองครบทุกเซิร์ฟเวอร์แล้วยังดึงไม่ได้เลย ค่อยแจ้งเตือนผู้ใช้เป็น Warning แทน Error
+    st.sidebar.warning("⚠️ ไม่สามารถโหลดข้อมูลปั๊มน้ำมันได้ชั่วคราว (เซิร์ฟเวอร์แผนที่ขัดข้อง)")
     return []
 
 @st.cache_data(ttl=300)
