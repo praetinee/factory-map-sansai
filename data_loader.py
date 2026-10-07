@@ -32,7 +32,7 @@ def load_gas_stations():
       relation["amenity"="fuel"](area.searchArea);
     );
     out center;"""
-    url = 'https://overpass-api.de/api/interpreter'
+    url = 'https://lz4.overpass-api.de/api/interpreter'
     try:
         headers = {'User-Agent': 'FactoryRiskMapApp/1.0'}
         r = requests.post(url, data=query.encode('utf-8'), headers=headers, timeout=30)
