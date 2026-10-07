@@ -32,9 +32,11 @@ def load_gas_stations():
       relation["amenity"="fuel"](area.searchArea);
     );
     out center;"""
-    url = 'https://lz4.overpass-api.de/api/interpreter'
+    # เปลี่ยนไปใช้เซิร์ฟเวอร์ทางเลือกของ Kumi Systems
+    url = 'https://overpass.kumi.systems/api/interpreter'
     try:
-        headers = {'User-Agent': 'FactoryRiskMapApp/1.0'}
+        # สำคัญมาก: ต้องระบุอีเมลติดต่อเพื่อป้องกันเซิร์ฟเวอร์บล็อกคำขอ (เปลี่ยนเป็นอีเมลของคุณเอง)
+        headers = {'User-Agent': 'FactoryRiskMapApp/1.0 (contact_email@example.com)'}
         r = requests.post(url, data=query.encode('utf-8'), headers=headers, timeout=30)
         if r.status_code == 200:
             data = r.json()
