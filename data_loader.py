@@ -23,7 +23,6 @@ def load_boundary():
     return None
 
 @st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
 def load_gas_stations():
     query = """[out:json][timeout:30];
     area["name"~"สันทราย"]["admin_level"="6"]->.searchArea;
